@@ -37,6 +37,11 @@ onboarded camera.
    The app creates its own tables on first run (`src/db.py: init_schema`), so no
    separate migration step is needed.
 
+   > If this fails with a container name conflict, you (or someone) already has a
+   > `licence_plate_pg` container from before this `docker-compose.yml` existed.
+   > Either `docker rm -f licence_plate_pg` (drops its data) and rerun, or just
+   > `docker start licence_plate_pg` to reuse it as-is.
+
 2. **Create a virtualenv and install dependencies**
    ```
    python -m venv env
