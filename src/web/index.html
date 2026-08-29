@@ -1,0 +1,2188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SENTINEL — Statewide CCTV Intelligence Platform</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --bg:#121214;
+    --card:#19191b;
+    --card-soft:#212123;
+    --card-raised:#28282a;
+    --ink:#f1f1f0;
+    --ink-soft:#adadad;
+    --ink-faint:#6e6e70;
+    --line:#333335;
+    --line-soft:#2a2a2c;
+
+    --accent:#e2231a;
+    --accent-dim:#b81c14;
+    --accent-soft:#3a1512;
+    --amber:#d9a441;
+    --amber-soft:#332b18;
+    --signal:#ff4433;
+    --signal-soft:#3d1a15;
+    --ok:#3fae63;
+    --ok-soft:#17281c;
+    --blue:#4a90d9;
+    --blue-soft:#132430;
+    --violet:#a385e8;
+    --violet-soft:#211a30;
+
+    --font-mono: "IBM Plex Mono", ui-monospace, Consolas, "Liberation Mono", monospace;
+    --font-sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+
+    --radius:10px;
+    --shadow: 0 1px 0 rgba(0,0,0,0.2), 0 8px 20px rgba(0,0,0,0.18);
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html{scroll-behavior:smooth;}
+  html,body{height:100%;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--font-sans);
+    font-size:14px;
+    -webkit-font-smoothing:antialiased;
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:0.001ms !important; animation-iteration-count:1 !important; }
+  }
+  ::selection{ background:var(--accent-soft); color:var(--accent); }
+  a{ color:inherit; }
+
+  .app{ display:grid; grid-template-columns:72px 1fr; min-height:100vh; }
+
+  /* ===== SIDEBAR ===== */
+  .sidebar{
+    background:var(--card); border-right:1px solid var(--line);
+    display:flex; flex-direction:column; align-items:center; padding:20px 0; gap:4px;
+    position:sticky; top:0; height:100vh;
+  }
+  .sidebar .mark{
+    width:38px; height:38px; border-radius:9px;
+    background:var(--accent-soft); border:1px solid var(--accent-dim);
+    display:flex; align-items:center; justify-content:center;
+    color:var(--accent); margin-bottom:26px;
+  }
+  .sidebar .mark svg{ width:21px; height:21px; }
+  .navitem{
+    width:46px; height:46px; display:flex; align-items:center; justify-content:center;
+    color:var(--nav-color, var(--ink-faint)); background:var(--nav-soft, transparent);
+    border-radius:8px; position:relative; cursor:pointer;
+    border:none; font:inherit;
+    transition:filter .15s ease;
+  }
+  .navitem svg{ width:19px; height:19px; pointer-events:none; }
+  .navitem:hover{ filter:brightness(1.3); }
+  .navitem.active::before{ content:""; position:absolute; left:-20px; top:50%; transform:translateY(-50%); width:3px; height:20px; background:var(--nav-color, var(--accent)); border-radius:2px; }
+
+  /* each nav item keeps a permanent identity color (like a real
+     product's colored feature icons) rather than staying monochrome
+     until hovered - makes the rail scannable at a glance. */
+  .navitem.nav-feeds{ --nav-color:var(--blue); --nav-soft:var(--blue-soft); }
+  .navitem.nav-integration{ --nav-color:var(--violet); --nav-soft:var(--violet-soft); }
+  .navitem.nav-search{ --nav-color:var(--amber); --nav-soft:var(--amber-soft); }
+  .navitem.nav-map{ --nav-color:var(--ok); --nav-soft:var(--ok-soft); }
+  .navitem.nav-alerts{ --nav-color:var(--signal); --nav-soft:var(--signal-soft); }
+  .navitem .navlabel{
+    position:absolute; left:56px; top:50%; transform:translateY(-50%) translateX(-4px);
+    background:var(--card-raised); color:var(--ink); font-size:12px; font-family:var(--font-sans); font-weight:500;
+    padding:6px 11px; border-radius:6px; border:1px solid var(--line); white-space:nowrap; pointer-events:none;
+    opacity:0; visibility:hidden; transition:opacity .12s ease, transform .12s ease; z-index:50;
+    box-shadow:var(--shadow);
+  }
+  .navitem:hover .navlabel{ opacity:1; visibility:visible; transform:translateY(-50%) translateX(0); }
+  .navspacer{ flex:1; }
+  .navfoot{ font-family:var(--font-mono); font-size:9px; color:var(--ink-faint); writing-mode:vertical-rl; letter-spacing:1px; padding-bottom:6px; }
+
+  /* ===== MAIN ===== */
+  .main{ display:flex; flex-direction:column; min-width:0; }
+
+  .topbar{ min-height:60px; border-bottom:1px solid var(--line); display:flex; flex-wrap:wrap; align-items:center; padding:12px 32px; gap:16px; background:var(--card); position:sticky; top:0; z-index:20; }
+  .brand{ display:flex; align-items:center; gap:10px; }
+  .brand-mark{ width:30px; height:30px; flex-shrink:0; }
+  .brand-mark svg{ width:100%; height:100%; }
+  .topbar h1{ font-family:var(--font-sans); font-size:19px; font-weight:700; letter-spacing:1.5px; color:var(--ink); }
+  .topbar .subtitle{ font-size:12px; color:var(--ink-soft); border-left:1px solid var(--line); padding-left:14px; }
+  .topbar-right{ margin-left:auto; display:flex; align-items:center; gap:14px; }
+  .statuspill{ display:flex; align-items:center; gap:6px; font-family:var(--font-mono); font-size:11px; color:var(--ink-soft); border:1px solid var(--line); border-radius:5px; padding:5px 11px; background:var(--card-soft); }
+  .dot{ width:6px; height:6px; border-radius:50%; background:var(--ok); flex-shrink:0; }
+  .dot.blink{ animation:blink 1.6s infinite ease-in-out; }
+  @keyframes blink{ 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+  .clock{ font-family:var(--font-mono); font-size:12px; color:var(--ink-soft); letter-spacing:0.5px; }
+
+  /* ===== PAGE / SECTION STACK ===== */
+  .page{ width:100%; margin:0; padding:28px 40px 64px; display:flex; flex-direction:column; gap:22px; }
+
+  .kpirow{ display:grid; grid-template-columns:repeat(5,1fr); gap:14px; }
+  .kpi{ background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:16px 18px; }
+  .kpi .val{ font-family:var(--font-sans); font-size:24px; font-weight:700; color:var(--ink); }
+  .kpi .val small{ font-size:12px; color:var(--ink-faint); font-weight:400; }
+  .kpi .label{ font-size:10.5px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:0.6px; margin-top:5px; font-family:var(--font-mono); }
+  .kpi.warn .val{ color:var(--amber); }
+  .kpi.crit .val{ color:var(--signal); }
+
+  .card{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:24px 28px; box-shadow:var(--shadow); scroll-margin-top:80px; }
+  .card-head{ display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:18px; padding-bottom:14px; border-bottom:1px solid var(--line); }
+  .card-head .titles .kicker{ font-family:var(--font-mono); font-size:10.5px; text-transform:uppercase; letter-spacing:1.2px; color:var(--accent); margin-bottom:4px; }
+  .card-head h2{ font-family:var(--font-sans); font-size:18px; font-weight:700; color:var(--ink); line-height:1.3; }
+  .card-head .tag{ font-family:var(--font-mono); font-size:10.5px; color:var(--ink-faint); padding-bottom:2px; }
+
+  .subhead{ display:flex; align-items:center; justify-content:space-between; gap:10px; height:24px; margin-bottom:12px; }
+  .subhead .label{ font-family:var(--font-mono); font-size:10.5px; text-transform:uppercase; letter-spacing:1px; color:var(--ink-faint); font-weight:600; }
+  .subhead .tag{ font-family:var(--font-mono); font-size:10.5px; color:var(--ink-faint); }
+
+  /* search */
+  .searchrow{ display:flex; gap:8px; margin-bottom:12px; }
+  .searchrow input{
+    flex:1; background:var(--card-soft); border:1px solid var(--line); color:var(--ink);
+    font-family:var(--font-mono); font-size:13px; letter-spacing:0.5px; padding:11px 14px; border-radius:8px; text-transform:uppercase;
+  }
+  .searchrow input:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+  .searchrow input::placeholder{ color:var(--ink-faint); letter-spacing:0.5px; text-transform:none; }
+  .btn{ font-family:var(--font-sans); font-size:13px; font-weight:600; background:var(--accent); color:#fff; border:none; padding:0 18px; border-radius:8px; cursor:pointer; transition:background .15s ease; }
+  .btn:hover{ background:#ff3b2e; }
+  .btn.ghost{ background:transparent; color:var(--ink-soft); border:1px solid var(--line); }
+  .btn.ghost:hover{ color:var(--ink); border-color:var(--accent); background:var(--card-soft); }
+  .btn.small{ font-size:12px; padding:7px 14px; }
+  .btn.danger{ background:transparent; color:var(--signal); border:1px solid var(--signal); }
+  .btn.danger:hover{ background:var(--signal-soft); }
+  .quickrow{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px; }
+  .chip{ font-family:var(--font-mono); font-size:11px; color:var(--ink-soft); border:1px solid var(--line); padding:5px 10px; border-radius:6px; cursor:pointer; background:var(--card-soft); transition:.15s ease; }
+  .chip:hover{ color:var(--accent); border-color:var(--accent); }
+  .hint{ font-family:var(--font-sans); font-size:12px; color:var(--ink-faint); margin-top:10px; line-height:1.6; max-width:80ch; }
+
+  .alertbanner{ display:none; margin-top:16px; border:1px solid var(--signal); background:var(--signal-soft); border-radius:10px; padding:14px 16px; }
+  .alertbanner.show{ display:block; }
+  .alertbanner .ah{ display:flex; align-items:center; gap:8px; font-family:var(--font-mono); font-size:11px; color:var(--signal); text-transform:uppercase; letter-spacing:0.8px; font-weight:600; margin-bottom:6px; }
+  .alertbanner .ab-dot{ width:7px; height:7px; border-radius:50%; background:var(--signal); animation:blink 1s infinite; }
+  .alertbanner p{ font-family:var(--font-sans); font-size:13px; color:var(--ink); line-height:1.5; }
+  .alertbanner p span{ font-family:var(--font-mono); color:var(--accent); }
+
+  /* tracking section: map + history side by side */
+  .trackgrid{ display:grid; grid-template-columns:1.3fr 1fr 0.8fr; gap:24px; align-items:start; }
+  @media (max-width:1200px){ .trackgrid{ grid-template-columns:1.3fr 1fr; } .trackgrid > div:nth-child(3){ grid-column:1/-1; } }
+  @media (max-width:980px){ .trackgrid{ grid-template-columns:1fr; } .trackgrid > div:nth-child(3){ grid-column:auto; } }
+
+  .mapwrap{ position:relative; height:440px; }
+  #map{ position:absolute; inset:0; border:1px solid var(--line); border-radius:10px; }
+  .maplegend{ display:flex; gap:16px; align-items:center; font-size:11px; color:var(--ink-soft); padding:12px 2px 0 2px; flex-wrap:wrap; }
+  .maplegend .lg{ display:flex; align-items:center; gap:5px; }
+  .lgdot{ width:7px; height:7px; border-radius:50%; display:inline-block; }
+
+  .sheetbackdrop{
+    position:fixed; inset:0; background:rgba(10,13,17,0.6);
+    opacity:0; visibility:hidden; transition:opacity .25s ease;
+    z-index:800;
+  }
+  .sheetbackdrop.show{ opacity:1; visibility:visible; }
+
+  .sheet{
+    position:fixed; left:50%; bottom:18px; width:min(520px, calc(100% - 32px));
+    transform:translate(-50%, calc(100% + 40px));
+    background:var(--card-raised); border:1px solid var(--line);
+    border-radius:14px; padding:14px 18px 18px 18px;
+    transition:transform .32s cubic-bezier(.2,.8,.2,1);
+    box-shadow:0 -14px 50px rgba(0,0,0,0.35);
+    z-index:900;
+  }
+  .sheet.open{ transform:translate(-50%, 0); }
+  .sheet .handle{ width:36px; height:4px; background:var(--line); border-radius:3px; margin:0 auto 12px auto; }
+  .sheet .srow{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .sheet .plate{ font-family:var(--font-mono); font-size:18px; font-weight:700; letter-spacing:1px; color:var(--ink); }
+  .sheet .status{ display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--ink-soft); margin-top:3px; }
+  .sheet .status .d{ width:6px; height:6px; border-radius:50%; background:var(--accent); animation:blink 1.4s infinite; }
+  .sheet .badge{ font-family:var(--font-mono); font-size:10px; padding:3px 9px; border-radius:5px; border:1px solid var(--signal); color:var(--signal); background:var(--signal-soft); }
+  .sheet .badge.clear{ border-color:var(--ok); color:var(--ok); background:var(--ok-soft); }
+  .sheet .livepill{ display:inline-flex; align-items:center; gap:5px; font-family:var(--font-mono); font-size:10px; color:var(--accent); background:var(--accent-soft); border:1px solid var(--accent-dim); border-radius:5px; padding:2px 8px; margin-top:8px; }
+  .sheet .livepill .d{ width:5px; height:5px; border-radius:50%; background:var(--accent); animation:blink 1.2s infinite; }
+  .sheet .stops{ display:flex; gap:8px; overflow-x:auto; margin:14px 0 4px 0; padding-bottom:2px; }
+  .stopchip{ flex-shrink:0; background:var(--card-soft); border:1px solid var(--line); border-radius:8px; padding:7px 10px; min-width:104px; }
+  .stopchip .st{ font-family:var(--font-mono); font-size:11px; color:var(--ink); }
+  .stopchip .sc{ font-size:10px; color:var(--ink-faint); margin-top:2px; }
+  .stopchip .sp{ font-family:var(--font-mono); font-size:9px; color:var(--accent); margin-top:4px; text-transform:uppercase; letter-spacing:0.4px; }
+  .sheet .sactions{ display:flex; gap:8px; margin-top:14px; }
+  .closesheet{ position:absolute; top:12px; right:14px; color:var(--ink-faint); cursor:pointer; font-size:16px; line-height:1; }
+  .closesheet:hover{ color:var(--signal); }
+
+  @keyframes pulse{ 0%{ transform:scale(0.5); opacity:0.9;} 100%{ transform:scale(2.2); opacity:0;} }
+
+  /* movement history list */
+  .historywrap{ max-height:440px; overflow-y:auto; overflow-x:auto; padding-right:4px; }
+  table.hist-table{ width:100%; border-collapse:collapse; }
+  table.hist-table thead th{ position:sticky; top:0; background:var(--card); z-index:1; }
+  table.hist-table td{ vertical-align:middle; }
+  table.hist-table tbody tr:last-child td{ border-bottom:none; }
+  table.hist-table .seq{ font-family:var(--font-mono); font-size:11px; color:var(--ink-faint); }
+  table.hist-table .htime{ font-family:var(--font-mono); font-size:12px; color:var(--ink); white-space:nowrap; }
+  table.hist-table .hloc{ font-family:var(--font-sans); font-size:12px; color:var(--ink-soft); }
+  table.hist-table .hconf{ font-family:var(--font-mono); font-size:11.5px; color:var(--ink-faint); }
+  table.hist-table tr.watch td{ background:var(--signal-soft); }
+  table.hist-table tr.watch .htime, table.hist-table tr.watch .hconf{ color:var(--signal); }
+  table.hist-table .hthumb{ width:48px; height:34px; object-fit:cover; border-radius:5px; border:1px solid var(--line); cursor:pointer; display:block; }
+  .empty-state{ font-family:var(--font-sans); font-size:12.5px; color:var(--ink-faint); padding:18px 0; line-height:1.7; }
+
+  /* journey summary (start -> end) */
+  .journeycard{ background:var(--card-soft); border:1px solid var(--line); border-radius:10px; padding:18px; height:100%; }
+  .journeycard .jnode{ display:flex; gap:12px; align-items:flex-start; }
+  .journeycard .jdot{ width:11px; height:11px; border-radius:50%; flex-shrink:0; margin-top:4px; }
+  .journeycard .jdot.start{ background:#4caf6f; box-shadow:0 0 0 4px rgba(76,175,111,0.16); }
+  .journeycard .jdot.end{ background:var(--signal); box-shadow:0 0 0 4px var(--signal-soft); }
+  .journeycard.watch .jdot.end{ animation:flashin 1s ease infinite alternate; }
+  .journeycard .jlabel{ font-family:var(--font-mono); font-size:9.5px; text-transform:uppercase; letter-spacing:0.6px; color:var(--ink-faint); }
+  .journeycard .jcam{ font-family:var(--font-sans); font-size:13.5px; font-weight:600; color:var(--ink); margin-top:2px; }
+  .journeycard .jtime{ font-family:var(--font-mono); font-size:11px; color:var(--ink-soft); margin-top:2px; }
+  .journeycard .jline{ position:relative; height:38px; margin-left:5px; width:1px; background:var(--line); }
+  .journeycard .jstops{ position:absolute; top:50%; left:0; transform:translate(-42%,-50%); background:var(--card); border:1px solid var(--line); border-radius:20px; padding:3px 10px; font-family:var(--font-mono); font-size:9.5px; color:var(--ink-faint); white-space:nowrap; }
+  .journeycard .jstats{ display:grid; grid-template-columns:1fr 1fr; gap:14px 10px; margin-top:18px; padding-top:16px; border-top:1px solid var(--line); }
+  .journeycard .jsv{ font-family:var(--font-mono); font-size:16px; font-weight:700; color:var(--ink); }
+  .journeycard .jsl{ font-family:var(--font-sans); font-size:10px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:0.4px; margin-top:2px; }
+
+  /* detection log (filters + paginated table, KVMS-style layout) */
+  .loggrid{ display:grid; grid-template-columns:220px 1fr; gap:20px; align-items:start; }
+  @media (max-width:900px){ .loggrid{ grid-template-columns:1fr; } }
+  .logfilters{ background:var(--card-soft); border:1px solid var(--line); border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:14px; }
+  .logfield{ display:flex; flex-direction:column; gap:5px; }
+  .logfield span{ font-family:var(--font-mono); font-size:10px; text-transform:uppercase; letter-spacing:0.5px; color:var(--ink-faint); }
+  .logfield select, .logfield input{ background:var(--card-raised); border:1px solid var(--line); border-radius:6px; padding:8px 9px; color:var(--ink); font-family:var(--font-sans); font-size:12.5px; }
+  .logfield select:focus, .logfield input:focus{ outline:none; border-color:var(--accent); }
+  .logfilters .btn{ width:100%; }
+  #logStatusFilter{ flex-wrap:wrap; }
+  #logStatusFilter .layoutbtn{ flex:1; justify-content:center; white-space:nowrap; }
+  .logtablewrap{ overflow-x:auto; overflow-y:auto; max-height:480px; }
+  table.log-table{ width:100%; border-collapse:collapse; }
+  table.log-table thead th{ position:sticky; top:0; background:var(--card); z-index:1; white-space:nowrap; }
+  table.log-table .lognum{ font-family:var(--font-mono); color:var(--ink-faint); font-size:11px; }
+  table.log-table .logtime{ font-family:var(--font-mono); font-size:11.5px; color:var(--ink); white-space:nowrap; }
+  table.log-table .logplate{ font-family:var(--font-mono); font-weight:600; color:var(--accent); white-space:nowrap; }
+  table.log-table .logwatch{ font-family:var(--font-mono); font-size:9.5px; text-transform:uppercase; letter-spacing:0.4px; padding:2px 8px; border-radius:5px; white-space:nowrap; }
+  table.log-table tr.iswatch .logwatch{ color:var(--signal); background:var(--signal-soft); }
+  table.log-table tr:not(.iswatch) .logwatch{ color:var(--ink-faint); }
+  table.log-table .logstatus{ font-family:var(--font-mono); font-size:9.5px; text-transform:uppercase; letter-spacing:0.4px; padding:2px 8px; border-radius:5px; white-space:nowrap; color:var(--ink-faint); }
+  table.log-table tr.isunclear .logstatus{ color:var(--amber); background:var(--amber-soft); }
+  table.log-table tr.isunclear .logplate{ color:var(--ink-faint); font-weight:500; font-style:italic; }
+  .logpager{ display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:12px; padding-top:12px; border-top:1px solid var(--line); font-family:var(--font-mono); font-size:11px; color:var(--ink-soft); flex-wrap:wrap; }
+  .logpage-size select{ background:var(--card-raised); border:1px solid var(--line); border-radius:5px; color:var(--ink); padding:3px 6px; font-family:var(--font-mono); font-size:11px; margin-left:6px; }
+  .logpagenav{ display:flex; align-items:center; gap:10px; }
+
+  /* camera table */
+  table{ width:100%; border-collapse:collapse; margin-top:2px; }
+  th{ text-align:left; font-family:var(--font-mono); font-size:10px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:0.6px; font-weight:600; padding:8px 6px; border-bottom:1px solid var(--line); }
+  td{ padding:11px 6px; font-family:var(--font-sans); font-size:12.5px; color:var(--ink-soft); border-bottom:1px solid var(--line-soft); }
+  tbody tr:hover td{ background:var(--card-soft); }
+  td.num{ font-family:var(--font-mono); color:var(--ink); }
+  td.dept{ color:var(--ink); font-weight:600; }
+  .bar{ width:60px; height:4px; background:var(--line); border-radius:2px; overflow:hidden; display:inline-block; vertical-align:middle; margin-left:8px; }
+  .bar i{ display:block; height:100%; background:var(--ok); }
+
+  /* alerts panel */
+  .alertgrid{ overflow-x:auto; }
+  table.alert-table{ width:100%; border-collapse:collapse; }
+  table.alert-table tbody tr td:first-child{ box-shadow:inset 3px 0 0 var(--amber); }
+  table.alert-table tbody tr.high td:first-child{ box-shadow:inset 3px 0 0 var(--signal); }
+  table.alert-table .atime{ font-family:var(--font-mono); font-size:11px; color:var(--ink-faint); white-space:nowrap; }
+  table.alert-table .aplate{ font-family:var(--font-mono); font-weight:600; color:var(--accent); white-space:nowrap; }
+  table.alert-table .sev{ font-family:var(--font-mono); font-size:9.5px; text-transform:uppercase; letter-spacing:0.5px; padding:2px 8px; border-radius:5px; white-space:nowrap; }
+  table.alert-table tr.high .sev{ color:var(--signal); background:var(--signal-soft); }
+  table.alert-table tr:not(.high) .sev{ color:var(--amber); background:var(--amber-soft); }
+  table.alert-table tbody tr.live{ animation:flashin .8s ease; }
+  @keyframes flashin{ 0%{ background:var(--signal-soft);} 100%{ background:var(--card-soft);} }
+
+  /* ===== integration / protocol cards ===== */
+  .intgrid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px; }
+  .intcard{ display:flex; gap:14px; align-items:flex-start; background:var(--card-soft); border:1px solid var(--line); border-radius:12px; padding:16px; }
+  .intcard.inactive{ opacity:0.55; }
+  .int-icon{ width:38px; height:38px; flex-shrink:0; border-radius:9px; background:var(--accent-soft); color:var(--accent); display:flex; align-items:center; justify-content:center; }
+  .int-icon svg{ width:19px; height:19px; }
+  .int-body{ flex:1; min-width:0; }
+  .int-label{ font-family:var(--font-sans); font-size:13.5px; font-weight:700; color:var(--ink); }
+  .int-desc{ font-family:var(--font-sans); font-size:11.5px; color:var(--ink-faint); line-height:1.5; margin-top:4px; }
+  .int-count{ text-align:right; flex-shrink:0; }
+  .int-count{ font-family:var(--font-mono); font-size:19px; font-weight:700; color:var(--ink); }
+  .int-count span{ display:block; font-size:9px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:0.5px; font-weight:400; margin-top:2px; }
+  .int-onboarded{ margin-top:10px; padding-top:10px; border-top:1px solid var(--line); display:flex; flex-direction:column; gap:2px; }
+  .int-cam{ display:flex; align-items:center; gap:8px; font-family:var(--font-sans); font-size:11.5px; cursor:pointer; padding:5px 6px; margin:0 -6px; border-radius:6px; transition:background .12s ease; }
+  .int-cam:hover{ background:var(--card-raised); }
+  .int-cam:hover .int-cam-more{ color:var(--accent); }
+  .int-cam-id{ font-family:var(--font-mono); font-weight:600; color:var(--accent); flex-shrink:0; }
+  .int-cam-loc{ color:var(--ink-soft); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .int-cam-status{ font-family:var(--font-mono); font-size:9px; text-transform:uppercase; letter-spacing:0.4px; color:var(--ink-faint); flex-shrink:0; }
+  .int-cam-status.online{ color:var(--ok); }
+  .int-cam-more{ font-family:var(--font-mono); font-size:9.5px; text-transform:uppercase; letter-spacing:0.4px; color:var(--ink-faint); flex-shrink:0; }
+
+  /* live feed grid */
+  .protorow{ display:flex; gap:6px; flex-wrap:wrap; }
+  .proto{ font-family:var(--font-mono); font-size:10.5px; color:var(--ink-soft); border:1px solid var(--line); border-radius:6px; padding:4px 10px; background:var(--card-soft); cursor:pointer; transition:.15s ease; }
+  .proto:hover{ border-color:var(--accent); color:var(--accent); }
+  .proto.active{ color:#fff; border-color:var(--accent); background:var(--accent); font-weight:700; }
+  .proto.dim{ color:var(--ink-faint); }
+  .proto.dim:not(.active):hover{ color:var(--accent); }
+
+  .feedtoolbar{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
+  .layoutrow{ display:flex; gap:4px; background:var(--card-soft); border:1px solid var(--line); border-radius:8px; padding:3px; }
+  .layoutbtn{ font-family:var(--font-mono); font-size:11px; color:var(--ink-soft); border:none; border-radius:6px; padding:6px 12px; background:transparent; cursor:pointer; transition:.15s ease; display:flex; align-items:center; gap:6px; }
+  .layoutbtn svg{ width:13px; height:13px; }
+  .layoutbtn:hover{ color:var(--ink); }
+  .layoutbtn.active{ color:#fff; background:var(--accent); }
+
+  /* ===== live feeds: camera list + video wall, KVMS-style ===== */
+  .feedlayout{ display:flex; gap:16px; align-items:flex-start; }
+  .cameralist{
+    width:220px; flex-shrink:0; background:var(--card-soft); border:1px solid var(--line);
+    border-radius:10px; overflow:hidden;
+  }
+  .cameralist .cl-head{
+    padding:11px 14px; border-bottom:1px solid var(--line); font-family:var(--font-mono); font-size:10.5px;
+    text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-faint); display:flex; align-items:center; gap:8px;
+  }
+  .cameralist .cl-head svg{ width:13px; height:13px; color:var(--ink-faint); }
+  .cl-search{
+    margin:10px 12px; display:flex; align-items:center; gap:6px; background:var(--card); border:1px solid var(--line);
+    border-radius:6px; padding:6px 9px;
+  }
+  .cl-search svg{ width:12px; height:12px; color:var(--ink-faint); flex-shrink:0; }
+  .cl-search input{
+    border:none; background:transparent; color:var(--ink); font-family:var(--font-sans); font-size:12px; width:100%; outline:none;
+  }
+  .cl-search input::placeholder{ color:var(--ink-faint); }
+  .cl-group{ font-family:var(--font-mono); font-size:10px; text-transform:uppercase; letter-spacing:0.05em; color:var(--ink-faint); padding:4px 14px; }
+  .cl-list{ padding:0 6px 10px; display:flex; flex-direction:column; gap:2px; }
+  .cl-row{
+    display:flex; align-items:center; gap:9px; padding:8px 8px; border-radius:6px; cursor:pointer; transition:background .12s ease;
+  }
+  .cl-row:hover{ background:var(--card-raised); }
+  .cl-row svg{ width:15px; height:15px; color:var(--ink-faint); flex-shrink:0; }
+  .cl-row .cl-name{ font-family:var(--font-sans); font-size:12.5px; color:var(--ink); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cl-row .cl-dot{ width:6px; height:6px; border-radius:50%; background:var(--todo); flex-shrink:0; }
+  .cl-row .cl-dot.online{ background:var(--ok); }
+  .cl-empty{ font-family:var(--font-sans); font-size:12px; color:var(--ink-faint); padding:8px 14px 14px; }
+
+  .feedmain{ flex:1; min-width:0; }
+
+  .feedgrid{ display:grid; gap:6px; }
+  .feedtile{ position:relative; aspect-ratio:16/10; background:#0a0a0b; border:1px solid var(--line); border-radius:6px; overflow:hidden; cursor:pointer; }
+  .feedtile img{ background:#0a0a0b; }
+  .feedtile .rec{ position:absolute; top:8px; left:9px; display:flex; align-items:center; gap:5px; font-family:var(--font-mono); font-size:9.5px; color:#fff; letter-spacing:0.5px; text-shadow:0 1px 3px rgba(0,0,0,0.8); }
+  .feedtile .rec .rd{ width:6px; height:6px; border-radius:50%; background:var(--signal); animation:blink 1s infinite; }
+  .feedtile .pbadge{ position:absolute; top:7px; right:8px; font-family:var(--font-mono); font-size:9px; color:#fff; background:rgba(0,0,0,0.55); border:1px solid rgba(255,255,255,0.15); padding:2px 7px; border-radius:5px; }
+  .feedtile .camid{ position:absolute; bottom:7px; left:9px; font-family:var(--font-sans); font-size:11px; font-weight:600; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,0.8); }
+  .feedtile .ts{ position:absolute; bottom:7px; right:9px; font-family:var(--font-mono); font-size:9px; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,0.8); }
+  .feedtile:hover{ border-color:var(--accent); }
+  .feedtile.empty{ cursor:default; display:flex; align-items:center; justify-content:center; background:var(--card-soft); }
+  .feedtile.empty:hover{ border-color:var(--line); }
+  .nosig{ text-align:center; }
+  .nosig svg{ width:30px; height:30px; color:var(--line); margin-bottom:8px; }
+  .nosig .nosig-label{ font-family:var(--font-mono); font-size:10.5px; color:var(--ink-faint); letter-spacing:1px; }
+  .nosig .nosig-ch{ display:block; font-size:9px; margin-top:4px; color:var(--todo); }
+  .feedempty{ font-family:var(--font-sans); font-size:12.5px; color:var(--ink-faint); padding:18px 0; grid-column:1/-1; }
+
+  @media (max-width:900px){ .feedlayout{ flex-direction:column; } .cameralist{ width:100%; } }
+
+  /* modal focused feed */
+  .modalwrap{ position:fixed; inset:0; background:rgba(10,13,17,0.75); display:none; align-items:center; justify-content:center; z-index:1000; padding:20px; }
+  .modalwrap.open{ display:flex; }
+  .modal{ width:min(760px,92vw); background:var(--card-raised); border:1px solid var(--line); border-radius:14px; overflow:hidden; box-shadow:0 20px 70px rgba(0,0,0,0.4); }
+  .modal .mhead{ display:flex; justify-content:space-between; align-items:center; padding:14px 18px; border-bottom:1px solid var(--line); }
+  .modal .mhead .mt{ font-family:var(--font-sans); font-size:13.5px; font-weight:700; color:var(--ink); }
+  .modal .mclose{ cursor:pointer; color:var(--ink-faint); font-size:18px; }
+  .modal .mclose:hover{ color:var(--signal); }
+  .modal .mfeed{ position:relative; aspect-ratio:16/9; background:#0d1015; overflow:hidden; }
+  .modal .mfoot{ display:flex; gap:16px; padding:11px 18px; font-family:var(--font-mono); font-size:10.5px; color:var(--ink-soft); border-top:1px solid var(--line); }
+
+  /* ===== add-camera wizard ===== */
+  .feedtile .addbtn{
+    position:absolute; inset:0; display:none; align-items:center; justify-content:center;
+    background:rgba(0,0,0,0.35); z-index:2;
+  }
+  .feedtile.empty:hover .addbtn{ display:flex; }
+  .addbtn-inner{
+    width:44px; height:44px; border-radius:50%; border:1.5px dashed var(--ink-faint); color:var(--ink-soft);
+    display:flex; align-items:center; justify-content:center; font-size:22px; font-weight:300; line-height:1;
+    background:var(--card-soft); transition:.15s ease;
+  }
+  .feedtile.empty:hover .addbtn-inner{ border-color:var(--accent); color:var(--accent); border-style:solid; }
+
+  .addcam-modal{ width:min(620px,94vw); }
+  .addcam-body{ padding:20px 22px 22px; }
+  .addcam-intro{ font-family:var(--font-sans); font-size:13.5px; color:var(--ink-soft); margin:0 0 14px; }
+  .addcam-typegrid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
+  .addcam-type-opt{
+    display:flex; flex-direction:column; align-items:flex-start; gap:8px; padding:14px; border-radius:10px;
+    border:1px solid var(--line); background:var(--card-soft); cursor:pointer; transition:.15s ease; text-align:left;
+  }
+  .addcam-type-opt:hover{ border-color:var(--accent); background:var(--card-raised); }
+  .addcam-type-opt .ato-icon{ width:26px; height:26px; color:var(--accent); }
+  .addcam-type-opt .ato-icon svg{ width:100%; height:100%; }
+  .addcam-type-opt .ato-label{ font-family:var(--font-sans); font-size:13px; font-weight:700; color:var(--ink); }
+  .addcam-type-opt .ato-desc{ font-family:var(--font-sans); font-size:11px; color:var(--ink-faint); line-height:1.4; }
+
+  .addcam-back{
+    font-family:var(--font-mono); font-size:11.5px; color:var(--ink-faint); background:none; border:none; cursor:pointer;
+    padding:0 0 14px; text-align:left;
+  }
+  .addcam-back:hover{ color:var(--accent); }
+  .addcam-type-banner{
+    display:flex; align-items:center; gap:10px; font-family:var(--font-sans); font-size:13px; font-weight:600;
+    color:var(--ink); background:var(--accent-soft); border:1px solid var(--accent); border-radius:8px; padding:10px 14px;
+    margin-bottom:16px;
+  }
+  .addcam-type-banner svg{ width:18px; height:18px; color:var(--accent); flex-shrink:0; }
+
+  .addcam-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px 14px; }
+  .addcam-field{ display:flex; flex-direction:column; gap:5px; font-family:var(--font-mono); font-size:10.5px; text-transform:uppercase; letter-spacing:0.05em; color:var(--ink-faint); }
+  .addcam-field.full{ grid-column:1/-1; }
+  .addcam-field input, .addcam-field select{
+    font-family:var(--font-sans); font-size:13px; text-transform:none; letter-spacing:normal; color:var(--ink);
+    background:var(--card-soft); border:1px solid var(--line); border-radius:7px; padding:9px 11px; outline:none;
+  }
+  .addcam-field input:focus, .addcam-field select:focus{ border-color:var(--accent); }
+  .addcam-field input::placeholder{ color:var(--ink-faint); }
+
+  .addcam-locate{ margin-top:4px; }
+  .addcam-locate-head{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px; }
+  .addcam-locate-head span:first-child{ font-family:var(--font-mono); font-size:10.5px; text-transform:uppercase; letter-spacing:0.05em; color:var(--ink-faint); }
+  .addcam-locate-coords{ font-family:var(--font-mono); font-size:11.5px; color:var(--accent); }
+  #addcam-minimap{ height:200px; border-radius:8px; border:1px solid var(--line); overflow:hidden; cursor:crosshair; }
+  .addcam-locate-hint{ font-family:var(--font-sans); font-size:11px; color:var(--ink-faint); margin-top:6px; }
+
+  .addcam-divider{ height:1px; background:var(--line); margin:18px 0; }
+  .addcam-hint{ font-family:var(--font-sans); font-size:11.5px; color:var(--ink-faint); line-height:1.6; margin-top:14px; }
+  .addcam-error{ font-family:var(--font-sans); font-size:12.5px; color:var(--signal); margin-top:10px; display:none; }
+  .addcam-error.show{ display:block; }
+  .addcam-actions{ display:flex; justify-content:flex-end; gap:10px; margin-top:20px; }
+
+  ::-webkit-scrollbar{ width:8px; height:8px; }
+  ::-webkit-scrollbar-track{ background:transparent; }
+  ::-webkit-scrollbar-thumb{ background:var(--line); border-radius:4px; }
+  .leaflet-control-attribution{ background:rgba(29,34,42,0.85) !important; color:var(--ink-faint) !important; font-size:9px !important; }
+  .leaflet-control-attribution a{ color:var(--ink-soft) !important; }
+  .leaflet-control-zoom a{ background:var(--card-raised) !important; color:var(--ink) !important; border-color:var(--line) !important; }
+  .leaflet-popup-content-wrapper{ background:var(--card-raised); color:var(--ink); border-radius:8px; }
+  .leaflet-popup-tip{ background:var(--card-raised); }
+
+  /* vehicle hover tooltip - shown when hovering a route stop */
+  .leaflet-tooltip.vehicle-tooltip{
+    background:var(--card-raised); border:1px solid var(--line); border-radius:10px;
+    padding:0; box-shadow:0 8px 24px rgba(0,0,0,0.35); opacity:1 !important;
+  }
+  .leaflet-tooltip.vehicle-tooltip::before{ border-top-color:var(--card-raised); }
+  .stop-tip{ display:flex; align-items:center; gap:10px; padding:9px 12px; }
+  .stop-tip-icon{
+    width:38px; height:38px; flex-shrink:0; border-radius:9px; background:var(--accent-soft);
+    color:var(--accent); display:flex; align-items:center; justify-content:center;
+  }
+  .stop-tip-body{ font-family:var(--font-sans); line-height:1.35; }
+  .stop-tip-type{ font-size:12.5px; font-weight:700; color:var(--ink); }
+  .stop-tip-cam{ font-size:11px; color:var(--ink-soft); margin-top:1px; }
+  .stop-tip-loc{ font-size:10.5px; color:var(--ink-faint); margin-top:1px; }
+
+  @media (max-width:900px){
+    .kpirow{ grid-template-columns:repeat(2,1fr); }
+    .page{ padding:20px 16px 48px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <div class="sidebar">
+    <div class="mark">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 2 3 6v6c0 5 4 9 9 10 5-1 9-5 9-10V6z" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"/><circle cx="12" cy="11.5" r="3.1" fill="none" stroke="var(--accent)" stroke-width="1.5"/><circle cx="12" cy="11.5" r="1.15" fill="var(--accent)"/></svg>
+    </div>
+    <button class="navitem nav-feeds" data-target="feedSection" onclick="goToSection(this)" title="Live Feeds">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      <span class="navlabel">Live Feeds</span>
+    </button>
+    <button class="navitem nav-integration" data-target="integrationSection" onclick="goToSection(this)" title="Integration">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 3v6a1 1 0 0 1-1 1H3"/><path d="M15 21v-6a1 1 0 0 1 1-1h5"/><path d="M3 15h5a1 1 0 0 1 1 1v5"/><path d="M21 9h-5a1 1 0 0 1-1-1V3"/></svg>
+      <span class="navlabel">Integration Layer</span>
+    </button>
+    <button class="navitem nav-search" data-target="searchSection" onclick="goToSection(this)" title="Vehicle Search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <span class="navlabel">Vehicle Search</span>
+    </button>
+    <button class="navitem nav-map" data-target="trackingSection" onclick="goToSection(this)" title="GIS Map">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 6v16l7-4 8 4 7-4V2l-7 4-8-4z"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+      <span class="navlabel">GIS Map &amp; Tracking</span>
+    </button>
+    <button class="navitem nav-alerts" data-target="alertsSection" onclick="goToSection(this)" title="Watchlist">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 2 3 6v6c0 5 4 9 9 10 5-1 9-5 9-10V6z"/></svg>
+      <span class="navlabel">Watchlist Alerts</span>
+    </button>
+    <div class="navspacer"></div>
+    <div class="navfoot">SENTINEL · SCRB GANDHINAGAR</div>
+  </div>
+
+  <div class="main">
+
+    <div class="topbar" id="topOverview">
+      <div class="brand">
+        <div class="brand-mark">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M12 2 3 6v6c0 5 4 9 9 10 5-1 9-5 9-10V6z" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"/><circle cx="12" cy="11.5" r="3.1" fill="none" stroke="var(--accent)" stroke-width="1.5"/><circle cx="12" cy="11.5" r="1.15" fill="var(--accent)"/></svg>
+        </div>
+        <h1>SENTINEL</h1>
+      </div>
+      <div class="subtitle">Statewide CCTV Intelligence &amp; Interoperability Platform</div>
+      <div class="topbar-right">
+        <div class="statuspill"><span class="dot"></span>SYSTEM NOMINAL</div>
+        <div class="statuspill"><span class="dot" style="background:var(--amber)"></span>0 / 0 FEEDS ONLINE</div>
+        <div class="clock" id="clock">--:--:--</div>
+      </div>
+    </div>
+
+    <div class="page">
+
+      <div class="kpirow">
+        <div class="kpi"><div class="val" id="kpiCameras">0</div><div class="label">Cameras Onboarded</div></div>
+        <div class="kpi"><div class="val" id="kpiFeeds">0 <small>/ 0</small></div><div class="label">Active Feeds</div></div>
+        <div class="kpi"><div class="val" id="kpiDetections">0</div><div class="label">Detections Today</div></div>
+        <div class="kpi warn"><div class="val" id="kpiAlerts">0</div><div class="label">Active Alerts</div></div>
+        <div class="kpi"><div class="val" id="kpiWatchlist">0</div><div class="label">Watchlist Records</div></div>
+      </div>
+
+      <!-- 1. LIVE FEEDS (multi-camera, the primary view) -->
+      <div class="card" id="feedSection">
+        <div class="card-head">
+          <div class="titles"><div class="kicker">01 · Multi-Camera View</div><h2>Live Camera Feeds</h2></div>
+          <div class="protorow" id="protoFilter"></div>
+        </div>
+        <div class="feedlayout">
+          <div class="cameralist">
+            <div class="cl-head">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7a2 2 0 0 1 2-2h9l2 2h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>
+              Organizations
+            </div>
+            <div class="cl-search">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input id="cameraListSearch" type="text" placeholder="Search cameras" oninput="renderCameraList()">
+            </div>
+            <div class="cl-group">Default Group</div>
+            <div class="cl-list" id="cameraList"></div>
+          </div>
+
+          <div class="feedmain">
+            <div class="feedtoolbar">
+              <div class="subhead" style="height:auto;margin:0;"><span class="label">Layout</span></div>
+              <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                <div class="layoutrow" id="layoutSwitcher">
+                  <button class="layoutbtn" data-grid="1" onclick="setGridLayout(1)">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="14" height="14" rx="1"/></svg>1×1
+                  </button>
+                  <button class="layoutbtn active" data-grid="4" onclick="setGridLayout(4)">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="6" height="6"/><rect x="9" y="1" width="6" height="6"/><rect x="1" y="9" width="6" height="6"/><rect x="9" y="9" width="6" height="6"/></svg>2×2
+                  </button>
+                  <button class="layoutbtn" data-grid="9" onclick="setGridLayout(9)">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="4" height="4"/><rect x="6" y="1" width="4" height="4"/><rect x="11" y="1" width="4" height="4"/><rect x="1" y="6" width="4" height="4"/><rect x="6" y="6" width="4" height="4"/><rect x="11" y="6" width="4" height="4"/><rect x="1" y="11" width="4" height="4"/><rect x="6" y="11" width="4" height="4"/><rect x="11" y="11" width="4" height="4"/></svg>3×3
+                  </button>
+                  <button class="layoutbtn" data-grid="16" onclick="setGridLayout(16)">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="3" height="3"/><rect x="5" y="1" width="3" height="3"/><rect x="9" y="1" width="3" height="3"/><rect x="13" y="1" width="2" height="3"/><rect x="1" y="5" width="3" height="3"/><rect x="5" y="5" width="3" height="3"/><rect x="9" y="5" width="3" height="3"/><rect x="13" y="5" width="2" height="3"/><rect x="1" y="9" width="3" height="3"/><rect x="5" y="9" width="3" height="3"/><rect x="9" y="9" width="3" height="3"/><rect x="13" y="9" width="2" height="3"/></svg>4×4
+                  </button>
+                </div>
+                <button class="btn small ghost" id="sandbox-sync-btn" onclick="syncSandboxCameras()">Sync Sandbox Cameras</button>
+              </div>
+            </div>
+            <div class="feedgrid" id="feedGrid"></div>
+            <div class="hint">Each tile is a live frame decoded by the AI pipeline for that camera, not a placeholder — every onboarded feed, regardless of protocol or vendor, renders through the same viewer. Empty channels hold their slot as cameras are added. Click a tile to focus it.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. INTEGRATION & PROTOCOLS -->
+      <div class="card" id="integrationSection">
+        <div class="card-head">
+          <div class="titles"><div class="kicker">02 · Adaptive Integration Layer</div><h2>Camera Onboarding &amp; Protocols</h2></div>
+          <span class="tag">Vendor-neutral by design</span>
+        </div>
+        <div class="intgrid" id="integrationGrid"></div>
+        <div class="hint">The platform never asks a department to replace its VMS. Each feed is pulled through whichever channel it already exposes — RTSP, ONVIF discovery, a vendor SDK, or HTTP/MJPEG — and normalised into one intelligence layer before anything reaches the database.</div>
+      </div>
+
+      <!-- 3. SEARCH -->
+      <div class="card" id="searchSection">
+        <div class="card-head">
+          <div class="titles"><div class="kicker">03 · ANPR Match</div><h2>Target Vehicle Search</h2></div>
+          <span class="tag">Cross-referenced against every onboarded camera</span>
+        </div>
+        <div class="searchrow">
+          <input id="plateInput" type="text" placeholder="Enter registration no. e.g. GJ05AB1234" maxlength="14">
+          <button class="btn" onclick="runSearch()">Search</button>
+        </div>
+        <div class="quickrow">
+          <span class="chip" onclick="quickFill('34A36837')">34A36837</span>
+          <span class="chip" onclick="quickFill('34A23126')">34A23126</span>
+          <span class="chip" onclick="resetSearch()">Clear</span>
+        </div>
+        <div class="hint">Query cross-references detection events from all onboarded cameras and continuously matches against the active watchlist. Tap the vehicle marker on the map below to open live tracking.</div>
+        <div class="alertbanner" id="alertBanner">
+          <div class="ah"><span class="ab-dot"></span>Watchlist Match — High Priority</div>
+          <p>Vehicle <span id="ab-plate"></span> matched an active watchlist record at <span id="ab-cam"></span>, <span id="ab-loc"></span> — <span id="ab-time"></span>.</p>
+        </div>
+      </div>
+
+      <!-- 4. LIVE TRACKING: MAP + HISTORY -->
+      <div class="card" id="trackingSection">
+        <div class="card-head">
+          <div class="titles"><div class="kicker">04 · PostGIS · Leaflet</div><h2>GIS Camera Network &amp; Live Tracking</h2></div>
+          <span class="tag">Tap the pulsing marker for live tracking</span>
+        </div>
+        <div class="trackgrid">
+          <div>
+            <div class="subhead"><span class="label">Live Map</span></div>
+            <div class="mapwrap">
+              <div id="map"></div>
+            </div>
+            <div class="maplegend">
+              <span class="lg"><span class="lgdot" style="background:var(--ink-faint)"></span>Camera (onboarded)</span>
+              <span class="lg"><span class="lgdot" style="background:#3fae63"></span>Route start</span>
+              <span class="lg"><span class="lgdot" style="background:#f4f1ea;border:1.5px solid var(--amber)"></span>Stop along route</span>
+              <span class="lg"><span class="lgdot" style="background:var(--amber)"></span>Current / last seen</span>
+              <span class="lg"><span class="lgdot" style="background:var(--signal)"></span>Watchlist match</span>
+            </div>
+          </div>
+          <div>
+            <div class="subhead"><span class="label">Movement History</span><span class="tag" id="histCount">0 EVENTS</span></div>
+            <div class="historywrap">
+              <table class="hist-table">
+                <thead><tr><th>#</th><th>Date &amp; Time</th><th>Camera</th><th>Location</th><th>Vehicle</th><th>Confidence</th><th>Snapshot</th></tr></thead>
+                <tbody id="history">
+                  <tr><td colspan="7" class="empty-state">No target vehicle selected. Run a search or select a quick-match chip above to reconstruct movement history and plot the route on the map.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div>
+            <div class="subhead"><span class="label">Journey</span></div>
+            <div class="journeycard" id="journeyCard">
+              <div class="empty-state">Run a search to see the route's start and end.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5. ALERTS -->
+      <div class="card" id="alertsSection">
+        <div class="card-head">
+          <div class="titles"><div class="kicker">05 · Real-time</div><h2>Active Watchlist Alerts</h2></div>
+          <span class="tag">Cross-referenced against VAHAN / eGujCop</span>
+        </div>
+        <div class="alertgrid">
+          <table class="alert-table">
+            <thead><tr><th>Time</th><th>Plate</th><th>Severity</th><th>Reason</th><th>Camera</th><th>Location</th><th></th></tr></thead>
+            <tbody id="alertGrid"><tr><td colspan="7" class="empty-state">No active alerts.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 6. DETECTION LOG -->
+      <div class="card" id="logSection">
+        <div class="card-head">
+          <div class="titles"><div class="kicker">06 · Full Audit Trail</div><h2>Detection Log</h2></div>
+          <span class="tag">Every logged plate read, across every onboarded camera</span>
+        </div>
+        <div class="loggrid">
+          <div class="logfilters">
+            <label class="logfield"><span>Camera</span>
+              <select id="log-camera"><option value="">All Cameras</option></select>
+            </label>
+            <label class="logfield"><span>From</span>
+              <input id="log-from" type="datetime-local">
+            </label>
+            <label class="logfield"><span>To</span>
+              <input id="log-to" type="datetime-local">
+            </label>
+            <label class="logfield"><span>Keyword (plate no.)</span>
+              <input id="log-keyword" type="text" placeholder="e.g. GJ05">
+            </label>
+            <label class="logfield"><span>Status</span>
+              <div class="layoutrow" id="logStatusFilter">
+                <button class="layoutbtn active" data-status="" onclick="setLogStatusFilter('')">All</button>
+                <button class="layoutbtn" data-status="confirmed" onclick="setLogStatusFilter('confirmed')">Confirmed</button>
+                <button class="layoutbtn" data-status="unclear" onclick="setLogStatusFilter('unclear')">Unclear</button>
+              </div>
+            </label>
+            <button class="btn" onclick="runLogSearch(1)">Search</button>
+            <button class="btn ghost" onclick="resetLogSearch()">Reset</button>
+            <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--line);">
+              <label class="logfield"><span>Danger Zone</span></label>
+              <button class="btn danger" id="clear-data-btn" onclick="clearAllData()">Delete All Stored Data</button>
+            </div>
+          </div>
+          <div class="logmain">
+            <div class="logtablewrap">
+              <table class="log-table">
+                <thead><tr><th>No.</th><th>Time</th><th>Plate</th><th>Status</th><th>Camera</th><th>Location</th><th>Stream Type</th><th>Vehicle</th><th>Confidence</th><th>Watchlist</th><th>Photo</th></tr></thead>
+                <tbody id="logTable"><tr><td colspan="11" class="empty-state">Loading…</td></tr></tbody>
+              </table>
+            </div>
+            <div class="logpager">
+              <div class="logpage-size">Every page shows
+                <select id="log-pagesize" onchange="runLogSearch(1)">
+                  <option value="25">25</option>
+                  <option value="50">50</option>
+                  <option value="100" selected>100</option>
+                </select>
+              </div>
+              <div class="logtotal" id="logTotal">Total 0 records</div>
+              <div class="logpagenav">
+                <button class="btn small ghost" onclick="logPagePrev()">&lt;</button>
+                <span id="logPageLabel">1 / 1</span>
+                <button class="btn small ghost" onclick="logPageNext()">&gt;</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 7. CAMERA NETWORK STATUS -->
+      <div class="card" id="camSection">
+        <div class="card-head">
+          <div class="titles"><div class="kicker">07 · Registry</div><h2>Camera Network Status</h2></div>
+          <span class="tag">By department</span>
+        </div>
+        <table>
+          <thead><tr><th>Department</th><th>Cameras</th><th>Online</th><th>Integration</th></tr></thead>
+          <tbody id="camtable"></tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="sheetbackdrop" id="sheetBackdrop" onclick="closeSheet()"></div>
+<div class="sheet" id="sheet">
+  <div class="closesheet" onclick="closeSheet()">&times;</div>
+  <div class="handle"></div>
+  <div class="srow">
+    <div>
+      <div class="plate" id="sh-plate">—</div>
+      <div class="status"><span class="d"></span><span id="sh-status">Live tracking</span></div>
+      <div class="livepill"><span class="d"></span>TRACKING LIVE</div>
+    </div>
+    <div class="badge" id="sh-badge">CLEAR</div>
+  </div>
+  <div class="stops" id="sh-stops"></div>
+  <div class="sactions">
+    <button class="btn small" onclick="openFeedFromSheet()">View Live Feed</button>
+    <button class="btn small ghost" onclick="closeSheet()">Dismiss</button>
+  </div>
+</div>
+
+<div class="modalwrap" id="modalWrap">
+  <div class="modal">
+    <div class="mhead">
+      <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+        <div class="mt" id="m-title">CAM-000 — Location</div>
+        <button class="btn small ghost" id="m-edit-toggle" onclick="toggleFeedEdit()" style="display:none;">Edit connection</button>
+      </div>
+      <div class="mclose" onclick="closeModal()">&times;</div>
+    </div>
+    <div class="mfeed" id="m-feed"></div>
+    <div class="mfoot" id="m-foot">
+      <span id="m-proto">RTSP</span>
+      <span id="m-res">Live</span>
+      <span id="m-ts">--:--:--</span>
+    </div>
+
+    <div class="addcam-body" id="feedEditPanel" style="display:none;">
+      <div class="addcam-grid">
+        <label class="addcam-field"><span>Camera name</span><input id="e-name" type="text"></label>
+        <label class="addcam-field"><span>Connection type</span>
+          <select id="e-conntype" onchange="onEditTypeChange()">
+            <option value="RTSP">RTSP</option>
+            <option value="Vendor API">VMS / Vendor API</option>
+            <option value="ONVIF">ONVIF</option>
+            <option value="HTTP/MJPEG">HTTP / MJPEG</option>
+            <option value="Capture Device">Analog + Capture Card</option>
+            <option value="Local File">Recorded / Test Footage</option>
+          </select>
+        </label>
+      </div>
+      <div class="addcam-divider"></div>
+      <div class="addcam-grid" id="edit-type-fields"></div>
+      <div class="addcam-hint" id="edit-hint"></div>
+      <div class="addcam-error" id="edit-error"></div>
+      <div class="addcam-actions">
+        <button class="btn ghost" onclick="cancelFeedEdit()">Cancel</button>
+        <button class="btn" id="edit-submit-btn" onclick="submitFeedEdit()">Save &amp; reconnect</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modalwrap" id="addCamWrap">
+  <div class="modal addcam-modal">
+    <div class="mhead">
+      <div class="mt" id="addcam-title">Onboard a Camera</div>
+      <div class="mclose" onclick="closeAddCamera()">&times;</div>
+    </div>
+
+    <div class="addcam-body" id="addcam-step-type">
+      <p class="addcam-intro">How does this feed reach the platform?</p>
+      <div class="addcam-typegrid" id="addcam-typegrid"></div>
+    </div>
+
+    <div class="addcam-body" id="addcam-step-form" style="display:none;">
+      <button class="addcam-back" onclick="backToTypePicker()">&larr; Change connection type</button>
+      <div class="addcam-type-banner" id="addcam-type-banner"></div>
+
+      <div class="addcam-grid">
+        <label class="addcam-field"><span>Camera ID</span><input id="f-camera_id" type="text" placeholder="CAM-03"></label>
+        <label class="addcam-field"><span>Camera name</span><input id="f-name" type="text" placeholder="e.g. Ring Road Junction"></label>
+        <label class="addcam-field"><span>Department</span>
+          <select id="f-department">
+            <option>Police</option><option>Transport</option><option>Municipal</option><option>Other</option>
+          </select>
+        </label>
+        <label class="addcam-field full"><span>Location</span>
+          <div style="display:flex; gap:8px;">
+            <input id="f-location" type="text" placeholder="e.g. Ring Road, Ahmedabad" style="flex:1;"
+              onkeydown="if(event.key==='Enter'){event.preventDefault();geocodeAddCamLocation();}">
+            <button type="button" class="btn small ghost" id="addcam-locate-btn" onclick="geocodeAddCamLocation()">Locate</button>
+          </div>
+        </label>
+      </div>
+
+      <div class="addcam-locate">
+        <div class="addcam-locate-head">
+          <span>Pin the camera's location</span>
+          <span class="addcam-locate-coords" id="addcam-coords">23.0300, 72.5800</span>
+        </div>
+        <div id="addcam-minimap"></div>
+        <div class="addcam-locate-hint">Type an address above and hit "Locate" (or Enter) to jump there, then fine-tune by clicking the map or dragging the pin.</div>
+      </div>
+      <input type="hidden" id="f-lat" value="23.03">
+      <input type="hidden" id="f-lon" value="72.58">
+
+      <div class="addcam-divider"></div>
+      <div class="addcam-grid" id="addcam-type-fields"></div>
+
+      <div class="addcam-hint" id="addcam-hint"></div>
+      <div class="addcam-error" id="addcam-error"></div>
+
+      <div class="addcam-actions">
+        <button class="btn ghost" onclick="closeAddCamera()">Cancel</button>
+        <button class="btn" id="addcam-submit-btn" onclick="submitAddCamera()">Connect stream</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------------- sidebar navigation: real URL paths, one page at a time ----------------
+   /multiview /integration /search /map /alerts /cameras are all real
+   server routes (see web_api.py) that serve this same page - a hard
+   refresh or bookmark on any of them lands directly on that section. */
+const PATH_TO_SECTION = {
+  '/multiview': 'feedSection',
+  '/integration': 'integrationSection',
+  '/search': 'searchSection',
+  '/map': 'trackingSection',
+  '/alerts': 'alertsSection',
+  '/cameras': 'camSection',
+};
+const SECTION_TO_PATH = Object.fromEntries(
+  Object.entries(PATH_TO_SECTION).map(([path, section]) => [section, path])
+);
+const DEFAULT_PATH = '/multiview';
+
+function showRoute(path, push){
+  const sectionId = PATH_TO_SECTION[path] || PATH_TO_SECTION[DEFAULT_PATH];
+  const resolvedPath = PATH_TO_SECTION[path] ? path : DEFAULT_PATH;
+
+  Object.values(PATH_TO_SECTION).forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.style.display = (id === sectionId) ? '' : 'none';
+  });
+
+  document.querySelectorAll('.navitem').forEach(n=>{
+    n.classList.toggle('active', n.dataset.target === sectionId);
+  });
+
+  if(location.pathname !== resolvedPath){
+    if(push) history.pushState(null, '', resolvedPath);
+    else history.replaceState(null, '', resolvedPath);
+  }
+  window.scrollTo({top:0, behavior:'instant'});
+
+  // Leaflet sizes itself against its container at construction time.
+  // trackingSection (the GIS map) starts hidden behind display:none
+  // since Live Feeds is the default route, so the map mis-measures
+  // itself as 0x0 unless told to recompute once it's actually shown.
+  // (map is guaranteed to exist by the time this ever runs - see the
+  // bootstrap ordering note at the bottom of this script.)
+  if(sectionId === 'trackingSection'){
+    setTimeout(()=> map.invalidateSize(), 60);
+  }
+}
+
+function goToSection(el){
+  showRoute(SECTION_TO_PATH[el.dataset.target] || DEFAULT_PATH, true);
+}
+
+window.addEventListener('popstate', ()=>{
+  showRoute(location.pathname, false);
+});
+
+// Bootstrapped after `map` is constructed further down this script -
+// see the final bootstrap block at the bottom of the file.
+
+/* ---------------- clock ---------------- */
+function tick(){
+  const t = new Date().toLocaleTimeString('en-GB', {hour12:false});
+  document.getElementById('clock').textContent = t + ' IST';
+  const mts = document.getElementById('m-ts');
+  if(mts) mts.textContent = t;
+}
+tick(); setInterval(tick, 1000);
+
+/* ---------------- live state ---------------- */
+let allCameras = [];        // populated from /api/cameras
+let camerasById = {};
+let currentVehicle = null;
+let lastSearchEvents = null;
+let lastSearchWatch = null;
+
+/* ---------------- map ---------------- */
+const map = L.map('map', {zoomControl:true, attributionControl:true}).setView([22.6, 71.6], 6.6);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution:'&copy; OpenStreetMap contributors', maxZoom:18
+}).addTo(map);
+
+function camIcon(status){
+  const color = status === 'online' ? '#4caf6f' : '#d9534f';
+  return L.divIcon({className:'', html:`<div style="width:9px;height:9px;border-radius:50%;background:${color};border:2px solid #1d222a;"></div>`, iconSize:[9,9]});
+}
+
+const camMarkers = {};
+let routeLayer = L.layerGroup().addTo(map);
+
+function renderMapMarkers(){
+  Object.values(camMarkers).forEach(m => map.removeLayer(m));
+  for(const id in camMarkers) delete camMarkers[id];
+
+  const pts = [];
+  allCameras.forEach(c=>{
+    if(c.lat == null || c.lon == null) return;
+    pts.push([c.lat, c.lon]);
+    const m = L.marker([c.lat, c.lon], {icon: camIcon(c.stream_status)}).addTo(map)
+      .bindTooltip(`${c.camera_id} — ${c.location_name || ''} (${c.protocol})`, {direction:'top'})
+      .on('click', ()=> openFeedModal(c.camera_id, c.location_name, c.protocol));
+    camMarkers[c.camera_id] = m;
+  });
+  if(pts.length) map.fitBounds(pts, {padding:[60,60], maxZoom:12});
+}
+
+/* ---------------- camera table ---------------- */
+function renderCamTable(){
+  const byDept = {};
+  allCameras.forEach(c=>{
+    const key = c.department || 'Unassigned';
+    if(!byDept[key]) byDept[key] = {dept:key, total:0, online:0, protos:new Set()};
+    byDept[key].total++;
+    if(c.stream_status === 'online') byDept[key].online++;
+    byDept[key].protos.add(c.protocol);
+  });
+  const rows = Object.values(byDept);
+  document.getElementById('camtable').innerHTML = rows.length ? rows.map(d=>{
+    const pct = d.total ? Math.round(d.online/d.total*100) : 0;
+    return `<tr><td class="dept">${d.dept}</td><td class="num">${d.total}</td>
+    <td class="num">${d.online} <span class="bar"><i style="width:${pct}%"></i></span></td>
+    <td>${[...d.protos].join(' / ')}</td></tr>`;
+  }).join('') : '<tr><td colspan="4"><div class="empty-state">No cameras onboarded yet.</div></td></tr>';
+}
+
+/* ---------------- integration & protocols ---------------- */
+const PROTOCOL_INFO = {
+  'RTSP': {
+    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 12a8 8 0 0 1 16 0"/><path d="M7 12a5 5 0 0 1 10 0"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>',
+    label: 'RTSP',
+    desc: 'Real-Time Streaming Protocol — the common export across most IP cameras, NVRs and DVRs. Pulled directly, no vendor lock-in.'
+  },
+  'ONVIF': {
+    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="7" height="7" rx="1.3"/><rect x="14" y="3" width="7" height="7" rx="1.3"/><rect x="3" y="14" width="7" height="7" rx="1.3"/><rect x="14" y="14" width="7" height="7" rx="1.3"/></svg>',
+    label: 'ONVIF',
+    desc: 'Open standard for camera discovery, control and stream negotiation across heterogeneous vendor equipment.'
+  },
+  'HTTP/MJPEG': {
+    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"/></svg>',
+    label: 'HTTP / MJPEG',
+    desc: 'Lightweight HTTP-based streaming for simple network cameras and direct browser playback without a media server.'
+  },
+  'Vendor API': {
+    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.1-3.1a4 4 0 1 1-5.7 5.7l-6.6 6.6a2 2 0 1 1-2.8-2.8l6.6-6.6a4 4 0 1 1 5.7-5.7z"/></svg>',
+    label: 'VMS / Vendor API',
+    desc: 'Direct integration against a department’s existing VMS (e.g. CP Plus, Hikvision, Dahua) — no infrastructure replaced.'
+  },
+  'Local File': {
+    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 4h10l6 6v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><path d="M14 4v6h6"/></svg>',
+    label: 'Recorded / Test Footage',
+    desc: 'Recorded clips used to validate the pipeline before live onboarding — same downstream analytics as any live source.'
+  },
+  'Capture Device': {
+    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10.5 22 7v10l-6-3.5z"/></svg>',
+    label: 'Analog + Capture Card',
+    desc: 'Legacy analog cameras digitized through a DVR/encoder or capture card, then processed on the same pipeline.'
+  },
+};
+const PROTOCOL_ORDER = ['RTSP','Vendor API','ONVIF','HTTP/MJPEG','Capture Device','Local File'];
+
+// Short labels for the compact filter row on the Live Feeds page -
+// same protocol keys as PROTOCOL_INFO, just tighter for a pill button.
+const PROTOCOL_SHORT_LABEL = {
+  'RTSP': 'RTSP',
+  'Vendor API': 'VMS',
+  'ONVIF': 'ONVIF',
+  'HTTP/MJPEG': 'HTTP / MJPEG',
+  'Capture Device': 'Analog / Capture',
+  'Local File': 'Recorded',
+};
+
+function renderIntegration(){
+  const byProto = {};
+  allCameras.forEach(c => { (byProto[c.protocol] ||= []).push(c); });
+
+  document.getElementById('integrationGrid').innerHTML = PROTOCOL_ORDER.map(p=>{
+    const info = PROTOCOL_INFO[p];
+    const cams = byProto[p] || [];
+    return `<div class="intcard ${cams.length ? '' : 'inactive'}">
+      <div class="int-icon">${info.icon}</div>
+      <div class="int-body">
+        <div class="int-label">${info.label}</div>
+        <div class="int-desc">${info.desc}</div>
+        ${cams.length ? `<div class="int-onboarded">${cams.map(c => `
+          <div class="int-cam" onclick="openCameraInfo('${c.camera_id}','${(c.location_name||'').replace(/'/g,'')}','${c.protocol}')">
+            <span class="int-cam-id">${c.camera_id}</span>
+            <span class="int-cam-loc">${c.name} — ${c.location_name || 'No location set'}</span>
+            <span class="int-cam-status ${c.stream_status === 'online' ? 'online' : ''}">${c.stream_status}</span>
+            <span class="int-cam-more">More Info &rsaquo;</span>
+          </div>`).join('')}</div>` : ''}
+      </div>
+      <div class="int-count">${cams.length}<span>onboarded</span></div>
+    </div>`;
+  }).join('');
+}
+
+/* ---------------- bootstrap: cameras ---------------- */
+async function loadCameras(){
+  const res = await fetch('/api/cameras');
+  allCameras = await res.json();
+  camerasById = {};
+  allCameras.forEach(c => camerasById[c.camera_id] = c);
+
+  renderCamTable();
+  renderMapMarkers();
+  renderProtoFilter();
+  renderFeedGrid();
+  renderIntegration();
+  renderCameraList();
+  renderLogCameraFilter();
+}
+
+function renderLogCameraFilter(){
+  const sel = document.getElementById('log-camera');
+  if(!sel) return;
+  const current = sel.value;
+  sel.innerHTML = '<option value="">All Cameras</option>' +
+    allCameras.map(c => `<option value="${c.camera_id}">${c.camera_id} — ${c.location_name || ''}</option>`).join('');
+  sel.value = current;
+}
+
+/* ---------------- camera list panel (Organizations tree) ---------------- */
+const CAMERA_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10.5 22 7v10l-6-3.5z"/></svg>';
+
+/* ---------------- add-camera wizard: connection types ----------------
+   Every type ultimately resolves to something cv2.VideoCapture on the
+   server can open (an rtsp:// / http:// URL, a device index, or a file
+   path) - the type picked here is about which fields to ask for and
+   which URL shape to build, matching how that class of source is
+   actually reached in the field. */
+const STREAM_TYPES = {
+  'RTSP': {
+    icon: PROTOCOL_INFO['RTSP'].icon,
+    label: 'RTSP',
+    desc: 'Direct stream URL from an IP camera, NVR or DVR.',
+    fields: (p) => `
+      <label class="addcam-field full"><span>RTSP stream URL</span><input id="${p}-url" type="text" placeholder="rtsp://192.168.1.50:554/stream1"></label>
+      <label class="addcam-field"><span>Username (optional)</span><input id="${p}-user" type="text" placeholder="admin"></label>
+      <label class="addcam-field"><span>Password (optional)</span><input id="${p}-pass" type="password" placeholder="········"></label>
+    `,
+    hint: 'The URL is used exactly as given, unless a username/password is also supplied — those get embedded into it automatically.',
+    build(p){
+      let url = (document.getElementById(`${p}-url`).value || '').trim();
+      const user = document.getElementById(`${p}-user`).value.trim();
+      const pass = document.getElementById(`${p}-pass`).value.trim();
+      if(!url) return {error:'RTSP stream URL is required.'};
+      if(user && !/\/\/[^@]+@/.test(url)){
+        url = url.replace('rtsp://', `rtsp://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@`);
+      }
+      return {video_path: url};
+    }
+  },
+  'Vendor API': {
+    icon: PROTOCOL_INFO['Vendor API'].icon,
+    label: 'VMS / Vendor API',
+    desc: 'Through an existing VMS — CP Plus, Hikvision, Dahua, or another vendor.',
+    fields: (p) => `
+      <label class="addcam-field"><span>VMS / vendor</span>
+        <select id="${p}-vendor"><option value="cpplus">CP Plus</option><option value="dahua">Dahua</option><option value="hikvision">Hikvision</option><option value="other">Other</option></select>
+      </label>
+      <label class="addcam-field"><span>Channel no.</span><input id="${p}-channel" type="number" min="1" value="1"></label>
+      <label class="addcam-field"><span>Server / DVR IP</span><input id="${p}-ip" type="text" placeholder="192.168.1.108"></label>
+      <label class="addcam-field"><span>Port</span><input id="${p}-port" type="number" value="554"></label>
+      <label class="addcam-field"><span>Username</span><input id="${p}-user" type="text" placeholder="admin"></label>
+      <label class="addcam-field"><span>Password</span><input id="${p}-pass" type="password" placeholder="········"></label>
+    `,
+    hint: 'Builds the vendor’s standard RTSP export URL from these details — the same one their own client software connects to.',
+    build(p){
+      const vendor = document.getElementById(`${p}-vendor`).value;
+      const ip = document.getElementById(`${p}-ip`).value.trim();
+      const port = document.getElementById(`${p}-port`).value.trim() || '554';
+      const channel = document.getElementById(`${p}-channel`).value.trim() || '1';
+      const user = encodeURIComponent(document.getElementById(`${p}-user`).value.trim());
+      const pass = encodeURIComponent(document.getElementById(`${p}-pass`).value.trim());
+      if(!ip) return {error:'Server / DVR IP is required.'};
+      const cred = user ? `${user}:${pass}@` : '';
+      const url = vendor === 'hikvision'
+        ? `rtsp://${cred}${ip}:${port}/Streaming/Channels/${channel}01`
+        : `rtsp://${cred}${ip}:${port}/cam/realmonitor?channel=${channel}&subtype=0`;
+      return {video_path: url};
+    }
+  },
+  'ONVIF': {
+    icon: PROTOCOL_INFO['ONVIF'].icon,
+    label: 'ONVIF',
+    desc: 'Standards-based discovery and stream negotiation.',
+    fields: (p) => `
+      <label class="addcam-field"><span>Camera IP</span><input id="${p}-ip" type="text" placeholder="192.168.1.64"></label>
+      <label class="addcam-field"><span>RTSP port</span><input id="${p}-port" type="number" value="554"></label>
+      <label class="addcam-field"><span>Stream path</span><input id="${p}-path" type="text" value="/onvif1"></label>
+      <label class="addcam-field"><span>Username</span><input id="${p}-user" type="text" placeholder="admin"></label>
+      <label class="addcam-field"><span>Password</span><input id="${p}-pass" type="password" placeholder="········"></label>
+    `,
+    hint: 'Full ONVIF auto-discovery (WS-Discovery) isn’t wired up in this build — this connects directly to the RTSP stream ONVIF negotiates under the hood, using the path from your camera’s documentation.',
+    build(p){
+      const ip = document.getElementById(`${p}-ip`).value.trim();
+      const port = document.getElementById(`${p}-port`).value.trim() || '554';
+      let path = document.getElementById(`${p}-path`).value.trim() || '/';
+      if(!path.startsWith('/')) path = '/' + path;
+      const user = encodeURIComponent(document.getElementById(`${p}-user`).value.trim());
+      const pass = encodeURIComponent(document.getElementById(`${p}-pass`).value.trim());
+      if(!ip) return {error:'Camera IP is required.'};
+      const cred = user ? `${user}:${pass}@` : '';
+      return {video_path: `rtsp://${cred}${ip}:${port}${path}`};
+    }
+  },
+  'HTTP/MJPEG': {
+    icon: PROTOCOL_INFO['HTTP/MJPEG'].icon,
+    label: 'HTTP / MJPEG',
+    desc: 'Lightweight HTTP camera stream, no media server needed.',
+    fields: (p) => `<label class="addcam-field full"><span>Stream URL</span><input id="${p}-url" type="text" placeholder="http://192.168.1.60/video"></label>`,
+    hint: 'Used exactly as given.',
+    build(p){
+      const url = (document.getElementById(`${p}-url`).value || '').trim();
+      if(!url) return {error:'Stream URL is required.'};
+      return {video_path: url};
+    }
+  },
+  'Capture Device': {
+    icon: PROTOCOL_INFO['Capture Device'].icon,
+    label: 'Analog + Capture Card',
+    desc: 'A legacy analog camera through a DVR/encoder or capture card.',
+    fields: (p) => `<label class="addcam-field"><span>Capture device index</span><input id="${p}-idx" type="number" min="0" value="0"></label>`,
+    hint: 'Matches the device index your OS assigns the capture card — 0 is usually the first attached device.',
+    build(p){
+      const idx = document.getElementById(`${p}-idx`).value.trim();
+      if(idx === '') return {error:'Device index is required.'};
+      return {video_path: idx};
+    }
+  },
+  'Local File': {
+    icon: PROTOCOL_INFO['Local File'].icon,
+    label: 'Recorded / Test Footage',
+    desc: 'A video file already present on the server, for testing.',
+    fields: (p) => `<label class="addcam-field full"><span>File path on server</span><input id="${p}-path" type="text" placeholder="data/my_clip.mp4"></label>`,
+    hint: 'Path is resolved relative to the project root on the server running this platform.',
+    build(p){
+      const path = (document.getElementById(`${p}-path`).value || '').trim();
+      if(!path) return {error:'File path is required.'};
+      return {video_path: path};
+    }
+  },
+};
+
+/* Best-effort reverse split of a built video_path back into a
+   protocol type + prefilled field values, for the edit panel. Doesn't
+   need to be perfect - worst case the operator just retypes the URL
+   into the plain RTSP field, which always works. */
+function guessTypeAndFields(protocol, videoPath){
+  const type = STREAM_TYPES[protocol] ? protocol : 'RTSP';
+  const values = {};
+  if(typeof videoPath === 'string' && videoPath.startsWith('rtsp://')){
+    const m = videoPath.match(/^rtsp:\/\/(?:([^:@]+):([^@]*)@)?([^:\/]+)(?::(\d+))?(\/.*)?$/);
+    if(m){
+      const [, user, pass, host, port, rest] = m;
+      values.user = user ? decodeURIComponent(user) : '';
+      values.pass = pass ? decodeURIComponent(pass) : '';
+      values.ip = host;
+      values.port = port || '554';
+      values.path = rest || '/';
+      values.url = videoPath;
+    }
+  } else if(typeof videoPath === 'string'){
+    values.path = videoPath;
+    values.url = videoPath;
+    values.idx = videoPath;
+  } else {
+    values.idx = String(videoPath);
+  }
+  return {type, values};
+}
+
+function fillFieldValues(prefix, values){
+  for(const [key, val] of Object.entries(values)){
+    const el = document.getElementById(`${prefix}-${key}`);
+    if(el && val !== undefined) el.value = val;
+  }
+}
+
+let addCamSelectedType = null;
+
+function openAddCameraModal(){
+  addCamSelectedType = null;
+  document.getElementById('addcam-error').classList.remove('show');
+  document.getElementById('addcam-step-form').style.display = 'none';
+  document.getElementById('addcam-step-type').style.display = '';
+  document.getElementById('addcam-title').textContent = 'Onboard a Camera';
+
+  document.getElementById('addcam-typegrid').innerHTML = Object.entries(STREAM_TYPES).map(([key, t]) => `
+    <div class="addcam-type-opt" onclick="pickStreamType('${key}')">
+      <div class="ato-icon">${t.icon}</div>
+      <div class="ato-label">${t.label}</div>
+      <div class="ato-desc">${t.desc}</div>
+    </div>
+  `).join('');
+
+  document.getElementById('addCamWrap').classList.add('open');
+}
+
+function closeAddCamera(){
+  document.getElementById('addCamWrap').classList.remove('open');
+}
+
+function backToTypePicker(){
+  document.getElementById('addcam-step-form').style.display = 'none';
+  document.getElementById('addcam-step-type').style.display = '';
+}
+
+function pickStreamType(key){
+  addCamSelectedType = key;
+  const t = STREAM_TYPES[key];
+
+  document.getElementById('addcam-step-type').style.display = 'none';
+  document.getElementById('addcam-step-form').style.display = '';
+  document.getElementById('addcam-title').textContent = `Onboard a Camera — ${t.label}`;
+  document.getElementById('addcam-type-banner').innerHTML = `${t.icon}<span>${t.label} connection</span>`;
+  document.getElementById('addcam-type-fields').innerHTML = t.fields('t');
+  document.getElementById('addcam-hint').textContent = t.hint;
+  document.getElementById('addcam-error').classList.remove('show');
+
+  let n = allCameras.length + 1;
+  let suggestion = `CAM-${String(n).padStart(2,'0')}`;
+  while(camerasById[suggestion]){ n++; suggestion = `CAM-${String(n).padStart(2,'0')}`; }
+  document.getElementById('f-camera_id').value = suggestion;
+  document.getElementById('f-name').value = '';
+  document.getElementById('f-location').value = '';
+
+  initAddCamMap();
+}
+
+/* ---------------- wizard: click-to-place location picker ---------------- */
+let addCamMap = null;
+let addCamMarker = null;
+
+function addCamDefaultLatLng(){
+  const withCoords = allCameras.filter(c => c.lat != null && c.lon != null);
+  if(!withCoords.length) return [23.03, 72.58];
+  const lat = withCoords.reduce((s,c)=>s+c.lat, 0) / withCoords.length;
+  const lon = withCoords.reduce((s,c)=>s+c.lon, 0) / withCoords.length;
+  return [lat, lon];
+}
+
+function setAddCamLatLng(lat, lon){
+  lat = Math.round(lat * 10000) / 10000;
+  lon = Math.round(lon * 10000) / 10000;
+  document.getElementById('f-lat').value = lat;
+  document.getElementById('f-lon').value = lon;
+  document.getElementById('addcam-coords').textContent = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+  if(addCamMarker) addCamMarker.setLatLng([lat, lon]);
+}
+
+/* Typing a place name never moved the pin on its own before - lat/lon
+   only ever came from clicking the mini-map, completely decoupled
+   from whatever was typed in the Location field. This geocodes the
+   typed text (OpenStreetMap's Nominatim, the standard free lookup
+   paired with Leaflet+OSM tiles we already use) and actually moves
+   the pin + map view there, so what's typed and what's plotted agree. */
+async function geocodeAddCamLocation(){
+  const input = document.getElementById('f-location');
+  const query = input.value.trim();
+  if(!query) return;
+
+  const btn = document.getElementById('addcam-locate-btn');
+  btn.disabled = true;
+  btn.textContent = 'Locating…';
+
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`);
+    if(!res.ok) throw new Error(`Lookup failed (${res.status})`);
+    const results = await res.json();
+
+    if(!results.length){
+      btn.textContent = 'Not found';
+    } else {
+      const lat = parseFloat(results[0].lat);
+      const lon = parseFloat(results[0].lon);
+      setAddCamLatLng(lat, lon);
+      if(addCamMap) addCamMap.setView([lat, lon], 14);
+      btn.textContent = 'Located ✓';
+    }
+  } catch(err){
+    console.error('Geocoding failed:', err);
+    btn.textContent = 'Error';
+  } finally {
+    btn.disabled = false;
+    setTimeout(()=>{ btn.textContent = 'Locate'; }, 2000);
+  }
+}
+
+function initAddCamMap(){
+  const [lat, lon] = addCamDefaultLatLng();
+
+  if(!addCamMap){
+    addCamMap = L.map('addcam-minimap', {zoomControl:false, attributionControl:false}).setView([lat, lon], 12);
+    L.control.zoom({position:'bottomright'}).addTo(addCamMap);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:18}).addTo(addCamMap);
+
+    addCamMarker = L.marker([lat, lon], {
+      draggable:true,
+      icon: L.divIcon({className:'', html:`<div style="width:16px;height:16px;border-radius:50% 50% 50% 0;background:#e2231a;border:2px solid #fff;transform:rotate(-45deg);box-shadow:0 2px 6px rgba(0,0,0,0.4);"></div>`, iconSize:[16,16], iconAnchor:[8,16]})
+    }).addTo(addCamMap);
+
+    addCamMap.on('click', (e)=> setAddCamLatLng(e.latlng.lat, e.latlng.lng));
+    addCamMarker.on('drag', (e)=> {
+      const p = e.target.getLatLng();
+      document.getElementById('f-lat').value = Math.round(p.lat*10000)/10000;
+      document.getElementById('f-lon').value = Math.round(p.lng*10000)/10000;
+      document.getElementById('addcam-coords').textContent = `${p.lat.toFixed(4)}, ${p.lng.toFixed(4)}`;
+    });
+  } else {
+    addCamMap.setView([lat, lon], 12);
+  }
+
+  setAddCamLatLng(lat, lon);
+  setTimeout(()=> addCamMap.invalidateSize(), 60);
+}
+
+async function submitAddCamera(){
+  const errorEl = document.getElementById('addcam-error');
+  errorEl.classList.remove('show');
+
+  const camera_id = document.getElementById('f-camera_id').value.trim().toUpperCase();
+  const name = document.getElementById('f-name').value.trim();
+  if(!camera_id || !name){
+    errorEl.textContent = 'Camera ID and name are required.';
+    errorEl.classList.add('show');
+    return;
+  }
+
+  const t = STREAM_TYPES[addCamSelectedType];
+  const result = t.build('t');
+  if(result.error){
+    errorEl.textContent = result.error;
+    errorEl.classList.add('show');
+    return;
+  }
+
+  const payload = {
+    camera_id,
+    name,
+    department: document.getElementById('f-department').value,
+    location: document.getElementById('f-location').value.trim(),
+    lat: parseFloat(document.getElementById('f-lat').value) || 23.03,
+    lon: parseFloat(document.getElementById('f-lon').value) || 72.58,
+    protocol: addCamSelectedType,
+    video_path: result.video_path,
+  };
+
+  const btn = document.getElementById('addcam-submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Connecting…';
+
+  try {
+    const res = await fetch('/api/cameras', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
+    if(!res.ok){
+      const body = await res.json().catch(()=>({}));
+      throw new Error((body.detail && (body.detail.msg || body.detail)) || `Request failed (${res.status})`);
+    }
+    closeAddCamera();
+    await loadCameras();
+  } catch(err){
+    errorEl.textContent = String(err.message || err);
+    errorEl.classList.add('show');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Connect stream';
+  }
+}
+
+/* Pulls the current camera list from the sandbox's own catalogue
+   endpoint (config.SANDBOX_HOST) and onboards whatever isn't already
+   onboarded - the sandbox's integration guide is explicit that the
+   catalogue itself is the source of truth, not a fixed URL list, so
+   this is meant to be re-run whenever the available cameras change
+   rather than onboarded once by hand. */
+async function syncSandboxCameras(){
+  const btn = document.getElementById('sandbox-sync-btn');
+  const originalLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Syncing…';
+
+  try {
+    const res = await fetch('/api/catalogue/sync', { method: 'POST' });
+    const body = await res.json().catch(()=>({}));
+    if(!res.ok){
+      throw new Error((body.detail && (body.detail.msg || body.detail)) || `Request failed (${res.status})`);
+    }
+    await loadCameras();
+    btn.textContent = `+${body.added.length} added, ${body.already_onboarded.length} already on`;
+  } catch(err){
+    btn.textContent = 'Sync failed — see console';
+    console.error('Sandbox catalogue sync failed:', err);
+  } finally {
+    setTimeout(()=>{ btn.disabled = false; btn.textContent = originalLabel; }, 4000);
+  }
+}
+
+function renderCameraList(){
+  const listEl = document.getElementById('cameraList');
+  if(!listEl) return;
+
+  const q = (document.getElementById('cameraListSearch')?.value || '').trim().toLowerCase();
+  const cams = allCameras.filter(c=>
+    !q || c.camera_id.toLowerCase().includes(q) || (c.location_name || '').toLowerCase().includes(q)
+  );
+
+  if(!cams.length){
+    listEl.innerHTML = `<div class="cl-empty">${allCameras.length ? 'No match' : 'No cameras onboarded yet'}</div>`;
+    return;
+  }
+
+  listEl.innerHTML = cams.map(c => `
+    <div class="cl-row" onclick="openFeedModal('${c.camera_id}','${(c.location_name||'').replace(/'/g,'')}','${c.protocol}')">
+      ${CAMERA_ICON_SVG}
+      <span class="cl-name">${c.camera_id}</span>
+      <span class="cl-dot ${c.stream_status === 'online' ? 'online' : ''}"></span>
+    </div>
+  `).join('');
+}
+
+/* ---------------- stats / KPIs ---------------- */
+async function refreshStats(){
+  const res = await fetch('/api/stats');
+  const s = await res.json();
+  document.getElementById('kpiCameras').textContent = s.total_cameras;
+  document.getElementById('kpiFeeds').innerHTML = `${s.online_cameras} <small>/ ${s.total_cameras}</small>`;
+  document.getElementById('kpiDetections').textContent = s.detections_today;
+  document.getElementById('kpiAlerts').textContent = s.active_alerts;
+  document.getElementById('kpiWatchlist').textContent = s.watchlist_records;
+
+  const pills = document.querySelectorAll('.statuspill');
+  if(pills[1]){
+    pills[1].innerHTML = `<span class="dot" style="background:var(--amber)"></span>${s.online_cameras} / ${s.total_cameras} FEEDS ONLINE`;
+  }
+}
+
+function quickFill(p){ document.getElementById('plateInput').value = p; runSearch(); }
+
+function resetSearch(){
+  document.getElementById('plateInput').value = '';
+  document.getElementById('history').innerHTML = '<tr><td colspan="7" class="empty-state">No target vehicle selected. Run a search or select a quick-match chip above to reconstruct movement history and plot the route on the map.</td></tr>';
+  document.getElementById('histCount').textContent = '0 EVENTS';
+  document.getElementById('alertBanner').classList.remove('show');
+  routeLayer.clearLayers();
+  currentVehicle = null; lastSearchEvents = null; lastSearchWatch = null;
+  closeSheet();
+  renderJourneyCard(null, false);
+  renderMapMarkers();
+}
+
+function vehiclePulseIcon(){
+  return L.divIcon({
+    className:'',
+    html:`<div style="position:relative;width:22px;height:22px;">
+            <div style="position:absolute;inset:0;border-radius:50%;border:2px solid #e2231a;animation:pulse 1.8s infinite ease-out;"></div>
+            <div style="position:absolute;left:5px;top:5px;width:12px;height:12px;border-radius:50%;background:#e2231a;border:2px solid #19191b;"></div>
+          </div>`,
+    iconSize:[22,22], iconAnchor:[11,11]
+  });
+}
+
+/* ---------------- cute vehicle-type icons, shown on stop hover ---------------- */
+const VEHICLE_ICONS = {
+  car: '<svg viewBox="0 0 48 32" width="30" height="20"><path fill="currentColor" d="M6 20l2.6-8.2A5 5 0 0 1 13.4 8h21.2a5 5 0 0 1 4.8 3.8L42 20v6a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-1H13v1a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2v-6z"/><path fill="#fff" opacity=".55" d="M11 18l1.8-6.4A2.6 2.6 0 0 1 15.3 10h17.4a2.6 2.6 0 0 1 2.5 1.6L37 18H11z"/><circle cx="14.5" cy="24.5" r="2.6" fill="#fff"/><circle cx="33.5" cy="24.5" r="2.6" fill="#fff"/></svg>',
+  truck: '<svg viewBox="0 0 48 32" width="30" height="20"><rect x="4" y="8" width="24" height="14" rx="1.5" fill="currentColor"/><path fill="currentColor" d="M28 13h9.5a2 2 0 0 1 1.7 1l3.4 5.6a2 2 0 0 1 .3 1V22h-15z"/><rect x="7" y="11" width="8" height="6" rx=".8" fill="#fff" opacity=".55"/><circle cx="14" cy="25" r="3" fill="#fff"/><circle cx="36" cy="25" r="3" fill="#fff"/></svg>',
+  bus: '<svg viewBox="0 0 48 32" width="30" height="20"><rect x="5" y="6" width="38" height="17" rx="2.5" fill="currentColor"/><rect x="8" y="9" width="6" height="6" rx=".8" fill="#fff" opacity=".6"/><rect x="16" y="9" width="6" height="6" rx=".8" fill="#fff" opacity=".6"/><rect x="24" y="9" width="6" height="6" rx=".8" fill="#fff" opacity=".6"/><rect x="32" y="9" width="6" height="6" rx=".8" fill="#fff" opacity=".6"/><circle cx="13" cy="25" r="3" fill="#fff"/><circle cx="35" cy="25" r="3" fill="#fff"/></svg>',
+  motorcycle: '<svg viewBox="0 0 48 32" width="30" height="20"><circle cx="11" cy="24" r="5.5" fill="none" stroke="currentColor" stroke-width="2.6"/><circle cx="37" cy="24" r="5.5" fill="none" stroke="currentColor" stroke-width="2.6"/><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="M11 24h9l6-10h9l4 8.5"/><path fill="currentColor" d="M27 12h6.5a2 2 0 0 1 1.8 1.1L37 17H24z"/></svg>',
+  vehicle: '<svg viewBox="0 0 48 32" width="30" height="20"><path fill="currentColor" d="M6 20l2.6-8.2A5 5 0 0 1 13.4 8h21.2a5 5 0 0 1 4.8 3.8L42 20v6a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-1H13v1a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2v-6z"/><circle cx="14.5" cy="24.5" r="2.6" fill="#fff"/><circle cx="33.5" cy="24.5" r="2.6" fill="#fff"/></svg>',
+};
+
+function vehicleIcon(type){
+  return VEHICLE_ICONS[type] || VEHICLE_ICONS.vehicle;
+}
+
+function haversineKm(lat1, lng1, lat2, lng2){
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function formatDuration(ms){
+  const mins = Math.round(ms / 60000);
+  if(mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if(hrs < 24) return `${hrs}h ${mins % 60}m`;
+  return `${Math.floor(hrs/24)}d ${hrs % 24}h`;
+}
+
+function renderJourneyCard(events, watchlisted){
+  const card = document.getElementById('journeyCard');
+  card.classList.toggle('watch', watchlisted);
+
+  if(!events || !events.length){
+    card.innerHTML = '<div class="empty-state">Run a search to see the route\'s start and end.</div>';
+    return;
+  }
+
+  const start = events[0];
+  const end = events[events.length - 1];
+  const between = events.length - 2;
+
+  let distanceKm = 0;
+  for(let i = 1; i < events.length; i++){
+    const a = events[i-1], b = events[i];
+    if(a.lat != null && b.lat != null) distanceKm += haversineKm(a.lat, a.lng, b.lat, b.lng);
+  }
+
+  const cameraCount = new Set(events.map(e => e.cam)).size;
+  const duration = formatDuration(end.ts - start.ts);
+
+  card.innerHTML = `
+    <div class="jnode">
+      <div class="jdot start"></div>
+      <div>
+        <div class="jlabel">Start</div>
+        <div class="jcam">${start.cam}</div>
+        <div class="jtime">${start.date} ${start.time}</div>
+      </div>
+    </div>
+    <div class="jline">${between > 0 ? `<span class="jstops">${between} stop${between===1?'':'s'} between</span>` : ''}</div>
+    <div class="jnode">
+      <div class="jdot end"></div>
+      <div>
+        <div class="jlabel">${watchlisted ? 'End · Watchlist match' : 'End · Last seen'}</div>
+        <div class="jcam">${end.cam}</div>
+        <div class="jtime">${end.date} ${end.time}</div>
+      </div>
+    </div>
+    <div class="jstats">
+      <div class="jstat"><div class="jsv">${events.length}</div><div class="jsl">Total Stops</div></div>
+      <div class="jstat"><div class="jsv">${duration}</div><div class="jsl">Duration</div></div>
+      <div class="jstat"><div class="jsv">${distanceKm.toFixed(1)} km</div><div class="jsl">Distance</div></div>
+      <div class="jstat"><div class="jsv">${cameraCount}</div><div class="jsl">Cameras</div></div>
+    </div>
+  `;
+}
+
+function stopTooltipHtml(e, index, isLast){
+  const typeLabel = (e.vehicleType || 'vehicle').replace(/^\w/, c => c.toUpperCase());
+  return `<div class="stop-tip">
+    <div class="stop-tip-icon">${vehicleIcon(e.vehicleType)}</div>
+    <div class="stop-tip-body">
+      <div class="stop-tip-type">${typeLabel}${isLast ? ' · Last seen' : ''}</div>
+      <div class="stop-tip-cam">${e.cam} — ${e.time}</div>
+      <div class="stop-tip-loc">${e.loc || ''}</div>
+    </div>
+  </div>`;
+}
+
+async function runSearch(){
+  const raw = document.getElementById('plateInput').value.trim().toUpperCase().replace(/\s+/g,'');
+  document.getElementById('plateInput').value = raw;
+  const histEl = document.getElementById('history');
+  routeLayer.clearLayers();
+  closeSheet();
+  if(!raw) return;
+
+  const res = await fetch(`/api/search?plate=${encodeURIComponent(raw)}`);
+  const data = await res.json();
+
+  // Results (history table + map) live in trackingSection ('/map'), a
+  // separate route from this search box ('/search') - without this,
+  // a search here updates that section's DOM invisibly and the user
+  // sees no feedback at all, success or failure.
+  showRoute('/map', true);
+
+  if(!data.history.length){
+    histEl.innerHTML = `<tr><td colspan="7" class="empty-state">No detections found for <b style="color:var(--ink)">${raw}</b> across onboarded cameras in the current retention window.</td></tr>`;
+    document.getElementById('histCount').textContent = '0 EVENTS';
+    document.getElementById('alertBanner').classList.remove('show');
+    renderJourneyCard(null, false);
+    currentVehicle = null; lastSearchEvents = null; lastSearchWatch = null;
+    return;
+  }
+
+  currentVehicle = raw;
+  const watchlisted = !!data.watchlist;
+  const events = data.history.map(h => ({
+    ts: new Date(h.detected_at),
+    time: new Date(h.detected_at).toLocaleTimeString('en-GB', {hour12:false}),
+    date: new Date(h.detected_at).toLocaleDateString('en-GB'),
+    cam: h.camera_id,
+    dept: h.department,
+    loc: h.location_name,
+    lat: h.lat, lng: h.lon,
+    conf: Math.round((h.detection_confidence || 0) * 100),
+    proto: (camerasById[h.camera_id] || {}).protocol || '—',
+    snapshot: h.snapshot_path ? `/evidence/${h.snapshot_path}` : null,
+    vehicleType: h.vehicle_type || 'vehicle',
+  }));
+  lastSearchEvents = events;
+  lastSearchWatch = data.watchlist;
+
+  document.getElementById('histCount').textContent = events.length + ' EVENTS';
+  histEl.innerHTML = events.map((e,i)=>`
+    <tr class="${(watchlisted && i === events.length-1) ? 'watch':''}">
+      <td class="seq">${i+1}</td>
+      <td class="htime">${e.date} ${e.time}</td>
+      <td>${e.cam}<div class="hloc" style="opacity:.7">${e.dept || ''}</div></td>
+      <td class="hloc">${e.loc || ''}${(watchlisted && i === events.length-1) ? ' <b style="color:var(--signal)">— WATCHLIST MATCH</b>' : ''}</td>
+      <td class="hloc">${e.vehicleType}</td>
+      <td class="hconf">${e.conf}%</td>
+      <td>${e.snapshot ? `<img class="hthumb" src="${e.snapshot}" onclick="openEvidence('${e.snapshot}')">` : '—'}</td>
+    </tr>
+  `).join('');
+
+  const latlngs = events.filter(e => e.lat != null).map(e=>[e.lat,e.lng]);
+  if(latlngs.length > 1){
+    // Uber-style route: a soft dark casing under a solid accent line,
+    // so it reads as one continuous path rather than a dashed hint.
+    L.polyline(latlngs, {color:'#000', weight:7, opacity:0.18, lineCap:'round', lineJoin:'round'}).addTo(routeLayer);
+    L.polyline(latlngs, {color:'#e2231a', weight:3.5, opacity:0.95, lineCap:'round', lineJoin:'round'}).addTo(routeLayer);
+  }
+
+  events.forEach((e,i)=>{
+    if(e.lat == null) return;
+    const isLast = i === events.length - 1;
+    const isFirst = i === 0;
+
+    if(isLast){
+      // handled below - gets the live pulsing "current position" marker
+      return;
+    }
+
+    // Start gets its own green pin (the universal "route begins here"
+    // shape); every other stop in between is a numbered badge - both
+    // deliberately far from the route line's red, which a plain red
+    // dot on a red line all but disappeared into.
+    const icon = isFirst
+      ? L.divIcon({
+          className:'',
+          html:`<div style="width:18px;height:18px;border-radius:50% 50% 50% 0;background:#3fae63;border:2.5px solid #fff;transform:rotate(-45deg);box-shadow:0 2px 6px rgba(0,0,0,0.4);"></div>`,
+          iconSize:[18,18], iconAnchor:[9,18]
+        })
+      : L.divIcon({
+          className:'',
+          html:`<div style="width:22px;height:22px;border-radius:50%;background:#f4f1ea;color:#1a1a1c;font:700 10.5px 'IBM Plex Mono',monospace;display:flex;align-items:center;justify-content:center;border:2.5px solid #d9a441;box-shadow:0 1px 5px rgba(0,0,0,0.35);">${i+1}</div>`,
+          iconSize:[22,22], iconAnchor:[11,11]
+        });
+
+    L.marker([e.lat,e.lng], {icon}).addTo(routeLayer).bindTooltip(stopTooltipHtml(e, i, false), {
+      direction:'top', className:'vehicle-tooltip', opacity:1, offset:[0,-8]
+    });
+  });
+
+  const last = events[events.length-1];
+  if(last.lat != null){
+    // Gold for an ordinary last-seen position, signal-red reserved
+    // specifically for a watchlist match - so red on this map means
+    // one thing only: an actual alert, not just "here's a marker."
+    const color = watchlisted ? '#ff4433' : '#d9a441';
+    L.marker([last.lat, last.lng], {icon: L.divIcon({className:'', html:`<div style="width:24px;height:24px;border-radius:50%;background:${color};color:#1a1a1c;font:700 11px 'IBM Plex Mono',monospace;display:flex;align-items:center;justify-content:center;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.5);">${events.length}</div>`, iconSize:[24,24]}), zIndexOffset:1000})
+      .addTo(routeLayer)
+      .bindTooltip(stopTooltipHtml(last, events.length-1, true), {direction:'top', className:'vehicle-tooltip', opacity:1, offset:[0,-12]})
+      .on('click', ()=> openSheet(raw));
+    if(latlngs.length) map.fitBounds(latlngs, {padding:[40,40], maxZoom:13});
+  }
+
+  const banner = document.getElementById('alertBanner');
+  if(watchlisted){
+    document.getElementById('ab-plate').textContent = raw;
+    document.getElementById('ab-cam').textContent = last.cam;
+    document.getElementById('ab-loc').textContent = last.loc || '';
+    document.getElementById('ab-time').textContent = last.time;
+    banner.classList.add('show');
+    pushAlertCard(last.time, raw, last.cam, last.loc || '', 'high', `${data.watchlist.category} — Watchlist match`, true);
+  } else {
+    banner.classList.remove('show');
+  }
+
+  renderJourneyCard(events, watchlisted);
+}
+
+/* ---------------- bottom sheet (fixed viewport dock) ---------------- */
+function openSheet(plate){
+  if(!lastSearchEvents || !lastSearchEvents.length) return;
+  const last = lastSearchEvents[lastSearchEvents.length-1];
+  document.getElementById('sh-plate').textContent = plate;
+  document.getElementById('sh-status').textContent = `Last seen ${last.time} · ${last.cam}, ${last.loc || ''}`;
+  const badge = document.getElementById('sh-badge');
+  if(lastSearchWatch){ badge.textContent = 'WATCHLISTED'; badge.classList.remove('clear'); }
+  else { badge.textContent = 'CLEAR'; badge.classList.add('clear'); }
+  document.getElementById('sh-stops').innerHTML = lastSearchEvents.map(e=>`
+    <div class="stopchip">
+      ${e.snapshot ? `<img src="${e.snapshot}" onclick="openEvidence('${e.snapshot}')" style="width:100%;height:52px;object-fit:cover;border-radius:6px;margin-bottom:6px;cursor:pointer;">` : ''}
+      <div class="st">${e.time}</div><div class="sc">${e.cam} · ${e.loc || ''}</div><div class="sp">${e.proto}</div>
+    </div>
+  `).join('');
+  document.getElementById('sheet').classList.add('open');
+  document.getElementById('sheetBackdrop').classList.add('show');
+}
+function closeSheet(){
+  document.getElementById('sheet').classList.remove('open');
+  document.getElementById('sheetBackdrop').classList.remove('show');
+}
+function openFeedFromSheet(){
+  if(!currentVehicle || !lastSearchEvents) return;
+  const last = lastSearchEvents[lastSearchEvents.length-1];
+  openFeedModal(last.cam, last.loc, last.proto, currentVehicle);
+}
+
+/* ---------------- live feed grid (multi-protocol, real MJPEG streams) ---------------- */
+let activeProto = 'ALL';
+let gridSize = 4;
+
+function setGridLayout(n){
+  gridSize = n;
+  document.querySelectorAll('.layoutbtn').forEach(b=>{
+    b.classList.toggle('active', Number(b.dataset.grid) === n);
+  });
+  renderFeedGrid();
+}
+
+function renderProtoFilter(){
+  const counts = {};
+  allCameras.forEach(c => { counts[c.protocol] = (counts[c.protocol] || 0) + 1; });
+
+  document.getElementById('protoFilter').innerHTML =
+    `<span class="proto ${activeProto==='ALL'?'active':''}" data-p="ALL" onclick="setProtoFilter('ALL')">All Streams</span>` +
+    PROTOCOL_ORDER.map(p => {
+      const n = counts[p] || 0;
+      return `<span class="proto ${activeProto===p?'active':''} ${n?'':'dim'}" data-p="${p}" onclick="setProtoFilter('${p}')">${PROTOCOL_SHORT_LABEL[p]}${n ? ` (${n})` : ''}</span>`;
+    }).join('');
+}
+
+function setProtoFilter(p){
+  activeProto = p;
+  document.querySelectorAll('#protoFilter .proto').forEach(el=>{
+    el.classList.toggle('active', el.dataset.p === p);
+  });
+  renderFeedGrid();
+}
+
+function renderFeedGrid(){
+  const feedGrid = document.getElementById('feedGrid');
+  const cams = allCameras.filter(c => activeProto === 'ALL' || c.protocol === activeProto);
+
+  const cols = Math.round(Math.sqrt(gridSize));
+  feedGrid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+
+  const slotCount = Math.max(gridSize, cams.length > gridSize ? cams.length : gridSize);
+  const slots = [];
+  for(let i = 0; i < slotCount; i++) slots.push(cams[i] || null);
+
+  feedGrid.innerHTML = slots.map((c, i) => {
+    if(!c){
+      return `<div class="feedtile empty">
+        <div class="nosig">${CAMERA_ICON_SVG}<div class="nosig-label">NO SIGNAL</div><span class="nosig-ch">CH ${i+1}</span></div>
+        <div class="addbtn" onclick="openAddCameraModal()"><div class="addbtn-inner">+</div></div>
+      </div>`;
+    }
+    return `<div class="feedtile" onclick="openFeedModal('${c.camera_id}','${(c.location_name||'').replace(/'/g,'')}','${c.protocol}')">
+      <img id="tile-${c.camera_id}" src="/api/cameras/${c.camera_id}/stream.mjpg" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">
+      <div class="rec"><span class="rd"></span>${c.stream_status === 'online' ? 'LIVE' : c.stream_status.toUpperCase()}</div>
+      <div class="pbadge">${c.protocol}</div>
+      <div class="camid">${c.camera_id} · ${c.location_name || ''}</div>
+      <div class="ts feedts"></div>
+    </div>`;
+  }).join('');
+  tickFeedTs();
+}
+
+function tickFeedTs(){
+  const t = new Date().toLocaleTimeString('en-GB',{hour12:false});
+  document.querySelectorAll('.feedts').forEach(el=> el.textContent = t);
+}
+setInterval(tickFeedTs, 1000);
+
+/* ---------------- focused feed modal (real live MJPEG stream) ---------------- */
+let currentModalCamId = null;
+// true only for the "More Info" details-only flow, where the edit
+// panel is the entire modal content - Cancel/Save there need to close
+// the modal instead of just hiding the panel back down to nothing.
+let modalDetailsOnly = false;
+
+function openFeedModal(camId, loc, proto){
+  currentModalCamId = camId;
+  modalDetailsOnly = false;
+  document.getElementById('m-title').textContent = `${camId} — ${loc || ''}`;
+  document.getElementById('m-proto').textContent = proto || '';
+  document.getElementById('m-res').textContent = 'Live';
+  const feed = document.getElementById('m-feed');
+  feed.style.display = '';
+  feed.innerHTML = `<img id="m-img" src="/api/cameras/${camId}/stream.mjpg" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">`;
+  document.getElementById('m-foot').style.display = '';
+
+  document.getElementById('m-edit-toggle').style.display = '';
+  document.getElementById('feedEditPanel').style.display = 'none';
+
+  document.getElementById('modalWrap').classList.add('open');
+}
+function closeModal(){
+  document.getElementById('modalWrap').classList.remove('open');
+  document.getElementById('feedEditPanel').style.display = 'none';
+  currentModalCamId = null;
+  modalDetailsOnly = false;
+}
+
+/* "More Info" from the Integration Layer's onboarded-camera list -
+   configuration details only, deliberately no video: the point here
+   is reading/fixing connection settings (often for a camera that's
+   offline anyway), not watching the feed. */
+function openCameraInfo(camId, loc, proto){
+  currentModalCamId = camId;
+  modalDetailsOnly = true;
+  document.getElementById('m-title').textContent = `${camId} — ${loc || ''}`;
+  document.getElementById('m-feed').style.display = 'none';
+  document.getElementById('m-foot').style.display = 'none';
+  document.getElementById('m-edit-toggle').style.display = 'none';
+  document.getElementById('feedEditPanel').style.display = 'none';
+  document.getElementById('modalWrap').classList.add('open');
+  toggleFeedEdit();
+}
+
+/* A reconnect swaps in a brand-new CameraWorker for the same
+   camera_id - any stream.mjpg connection already open is still bound
+   to the old (now-stopped) worker and will just go stale, not error
+   out. Force the <img> to open a fresh connection so it picks up the
+   replacement worker. */
+function reconnectModalStream(camId){
+  const img = document.getElementById('m-img');
+  if(img) img.src = `/api/cameras/${camId}/stream.mjpg?t=${Date.now()}`;
+}
+
+/* ---------------- edit connection panel (inside the feed modal) ----------------
+   Reuses the same STREAM_TYPES field templates / URL builders as the
+   Add Camera wizard (with the 'e-' id prefix instead of 't-'), so
+   editing a live feed's connection details goes through the exact
+   same vendor-URL logic, not a second copy that could drift. */
+function cancelFeedEdit(){
+  // In the details-only ("More Info") flow the panel is the entire
+  // modal - hiding it would just leave an empty title bar behind, so
+  // Cancel there closes the modal outright instead.
+  if(modalDetailsOnly){ closeModal(); return; }
+  toggleFeedEdit();
+}
+
+async function toggleFeedEdit(){
+  const panel = document.getElementById('feedEditPanel');
+  const opening = panel.style.display === 'none';
+  if(!opening){
+    panel.style.display = 'none';
+    return;
+  }
+  if(!currentModalCamId) return;
+
+  document.getElementById('edit-error').classList.remove('show');
+  document.getElementById('edit-hint').textContent = 'Loading current connection details…';
+  panel.style.display = '';
+
+  try {
+    const res = await fetch(`/api/cameras/${currentModalCamId}`);
+    if(!res.ok) throw new Error(`Could not load camera details (${res.status})`);
+    const cam = await res.json();
+
+    document.getElementById('e-name').value = cam.name || '';
+    const { type, values } = guessTypeAndFields(cam.protocol, cam.video_path);
+    document.getElementById('e-conntype').value = type;
+    renderEditFields(type, values);
+  } catch(err){
+    document.getElementById('edit-hint').textContent = '';
+    const errorEl = document.getElementById('edit-error');
+    errorEl.textContent = String(err.message || err);
+    errorEl.classList.add('show');
+  }
+}
+
+function renderEditFields(type, values){
+  const t = STREAM_TYPES[type];
+  document.getElementById('edit-type-fields').innerHTML = t.fields('e');
+  document.getElementById('edit-hint').textContent = t.hint;
+  if(values) fillFieldValues('e', values);
+}
+
+function onEditTypeChange(){
+  renderEditFields(document.getElementById('e-conntype').value, null);
+}
+
+async function submitFeedEdit(){
+  const errorEl = document.getElementById('edit-error');
+  errorEl.classList.remove('show');
+  if(!currentModalCamId) return;
+
+  const type = document.getElementById('e-conntype').value;
+  const t = STREAM_TYPES[type];
+  const result = t.build('e');
+  if(result.error){
+    errorEl.textContent = result.error;
+    errorEl.classList.add('show');
+    return;
+  }
+
+  const btn = document.getElementById('edit-submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Reconnecting…';
+
+  try {
+    const res = await fetch(`/api/cameras/${currentModalCamId}`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        name: document.getElementById('e-name').value.trim() || undefined,
+        protocol: type,
+        video_path: result.video_path,
+      }),
+    });
+    if(!res.ok){
+      const body = await res.json().catch(()=>({}));
+      throw new Error((body.detail && (body.detail.msg || body.detail)) || `Request failed (${res.status})`);
+    }
+    await loadCameras();
+    if(modalDetailsOnly){
+      closeModal();
+    } else {
+      document.getElementById('feedEditPanel').style.display = 'none';
+      reconnectModalStream(currentModalCamId);
+    }
+  } catch(err){
+    errorEl.textContent = String(err.message || err);
+    errorEl.classList.add('show');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save & reconnect';
+  }
+}
+
+/* ---------------- evidence photo (static, captured at detection time) ---------------- */
+function openEvidence(url){
+  currentModalCamId = null;
+  modalDetailsOnly = false;
+  document.getElementById('m-title').textContent = 'Evidence Snapshot';
+  document.getElementById('m-proto').textContent = 'Captured at detection time';
+  document.getElementById('m-res').textContent = '';
+  document.getElementById('m-edit-toggle').style.display = 'none';
+  document.getElementById('feedEditPanel').style.display = 'none';
+  document.getElementById('m-foot').style.display = '';
+  const feed = document.getElementById('m-feed');
+  feed.style.display = '';
+  feed.innerHTML = `<img src="${url}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#0d1015;">`;
+  document.getElementById('modalWrap').classList.add('open');
+}
+
+/* ---------------- alerts panel (live) ---------------- */
+const alertGrid = document.getElementById('alertGrid');
+
+function cardHtml(t,plate,cam,loc,sev,label,live){
+  return `<tr class="${sev==='high'?'high':''} ${live?'live':''}">
+    <td class="atime">${t}</td>
+    <td class="aplate">${plate}</td>
+    <td><span class="sev">${sev==='high'?'High':'Medium'}</span></td>
+    <td>${label}</td>
+    <td>${cam}</td>
+    <td>${loc}</td>
+    <td><button class="btn small ghost" onclick="quickFill('${plate}')">View Route</button></td>
+  </tr>`;
+}
+
+async function refreshAlerts(){
+  const res = await fetch('/api/alerts/recent?limit=12');
+  const alerts = await res.json();
+  if(!alerts.length){
+    alertGrid.innerHTML = '<tr><td colspan="7" class="empty-state">No active alerts.</td></tr>';
+    return;
+  }
+  alertGrid.innerHTML = alerts.map(a => cardHtml(
+    new Date(a.detected_at).toLocaleTimeString('en-GB', {hour12:false}),
+    a.plate_number, a.camera_id, a.camera_name || '',
+    a.priority === 'high' ? 'high' : 'med',
+    a.description || a.alert_type, false
+  )).join('');
+}
+
+function pushAlertCard(t,plate,cam,loc,sev,label,live){
+  alertGrid.querySelector('.empty-state')?.closest('tr')?.remove();
+  const wrap = document.createElement('tbody');
+  wrap.innerHTML = cardHtml(t,plate,cam,loc,sev,label,live);
+  alertGrid.prepend(wrap.firstElementChild);
+}
+
+/* ---------------- detection log (filterable, paginated) ---------------- */
+let logPage = 1;
+let logTotalPages = 1;
+let logStatusValue = '';
+
+function setLogStatusFilter(status){
+  logStatusValue = status;
+  document.querySelectorAll('#logStatusFilter .layoutbtn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.status === status);
+  });
+  runLogSearch(1);
+}
+
+function logRowHtml(r, seq){
+  const unclear = r.plate_status === 'unclear';
+  const photo = r.snapshot_path
+    ? `<button class="btn small ghost" onclick="openEvidence('/evidence/${r.snapshot_path}')">Show Image</button>`
+    : '—';
+  return `<tr class="${r.watchlisted ? 'iswatch' : ''} ${unclear ? 'isunclear' : ''}">
+    <td class="lognum">${seq}</td>
+    <td class="logtime">${new Date(r.detected_at).toLocaleString('en-GB', {hour12:false})}</td>
+    <td class="logplate">${r.plate_number}</td>
+    <td><span class="logstatus">${unclear ? 'Unclear' : 'Confirmed'}</span></td>
+    <td>${r.camera_id}</td>
+    <td>${r.location_name || ''}</td>
+    <td>${r.protocol || 'Unknown'}</td>
+    <td>${r.vehicle_type || 'vehicle'}</td>
+    <td>${Math.round((r.detection_confidence || 0) * 100)}%</td>
+    <td><span class="logwatch">${r.watchlisted ? 'Watchlisted' : '—'}</span></td>
+    <td>${photo}</td>
+  </tr>`;
+}
+
+async function runLogSearch(page){
+  logPage = page || logPage;
+  const pageSize = parseInt(document.getElementById('log-pagesize').value, 10);
+  const params = new URLSearchParams({
+    page: logPage,
+    page_size: pageSize,
+    keyword: document.getElementById('log-keyword').value.trim(),
+    date_from: document.getElementById('log-from').value,
+    date_to: document.getElementById('log-to').value,
+    camera_id: document.getElementById('log-camera').value,
+    status: logStatusValue,
+  });
+
+  const tbody = document.getElementById('logTable');
+  tbody.innerHTML = '<tr><td colspan="11" class="empty-state">Loading…</td></tr>';
+
+  const res = await fetch(`/api/detections/log?${params}`);
+  const data = await res.json();
+
+  if(!data.records.length){
+    tbody.innerHTML = '<tr><td colspan="11" class="empty-state">No detections match these filters.</td></tr>';
+  } else {
+    const offset = (logPage - 1) * pageSize;
+    tbody.innerHTML = data.records.map((r,i) => logRowHtml(r, offset + i + 1)).join('');
+  }
+
+  logTotalPages = Math.max(1, Math.ceil(data.total / pageSize));
+  document.getElementById('logTotal').textContent = `Total ${data.total} records`;
+  document.getElementById('logPageLabel').textContent = `${logPage} / ${logTotalPages}`;
+}
+
+function logPagePrev(){ if(logPage > 1) runLogSearch(logPage - 1); }
+function logPageNext(){ if(logPage < logTotalPages) runLogSearch(logPage + 1); }
+
+function resetLogSearch(){
+  document.getElementById('log-camera').value = '';
+  document.getElementById('log-from').value = '';
+  document.getElementById('log-to').value = '';
+  document.getElementById('log-keyword').value = '';
+  logStatusValue = '';
+  document.querySelectorAll('#logStatusFilter .layoutbtn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.status === '');
+  });
+  runLogSearch(1);
+}
+
+/* Permanently wipes every detection, alert, and evidence photo -
+   watchlist entries and onboarded cameras are untouched. There's no
+   undo, so this is gated behind an explicit confirmation rather than
+   firing on a single click. */
+async function clearAllData(){
+  if(!confirm('Delete ALL stored detections, alerts, and evidence photos?\n\nThis cannot be undone. Onboarded cameras and the watchlist are not affected.')){
+    return;
+  }
+
+  const btn = document.getElementById('clear-data-btn');
+  btn.disabled = true;
+  btn.textContent = 'Deleting…';
+
+  try {
+    const res = await fetch('/api/admin/clear-data', { method: 'POST' });
+    const body = await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error((body.detail && (body.detail.msg || body.detail)) || `Request failed (${res.status})`);
+
+    btn.textContent = `Deleted ${body.detections_deleted} records`;
+    await runLogSearch(1);
+    await refreshAlerts();
+    await refreshStats();
+  } catch(err){
+    console.error('Clear data failed:', err);
+    btn.textContent = 'Failed — see console';
+  } finally {
+    setTimeout(()=>{ btn.disabled = false; btn.textContent = 'Delete All Stored Data'; }, 3000);
+  }
+}
+
+/* ---------------- bootstrap ---------------- */
+loadCameras();
+refreshAlerts();
+refreshStats();
+runLogSearch(1);
+setInterval(refreshAlerts, 5000);
+setInterval(refreshStats, 5000);
+setInterval(loadCameras, 15000);
+
+// Routed last, now that `map` and every render function above it
+// exist - this is also what fixes the GIS map's sizing (see the
+// comment inside showRoute()).
+showRoute(location.pathname, false);
+</script>
+
+</body>
+</html>

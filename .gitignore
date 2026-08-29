@@ -1,0 +1,32 @@
+# Python
+env/
+__pycache__/
+*.pyc
+
+# Node (Reticle test harness under src/web)
+node_modules/
+src/web/package-lock.json
+
+# Local tool/agent state - machine-specific, not part of the app
+.claude/
+.reticle/
+
+# Reticle test-harness scaffolding (this session's verification exercise,
+# not part of the SENTINEL app itself)
+src/web/.reticle.json
+src/web/AGENTS.md
+src/web/RETICLE.md
+src/web/.cursor/
+src/web/vite.config.js
+src/web/package.json
+
+# Runtime output - regenerates on every run
+data/evidence/
+logs/
+
+# Oversized sample footage - too large for git (1.9GB)
+data/locatiopn1.mp4
+
+# OS
+Thumbs.db
+.DS_Store
